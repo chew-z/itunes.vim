@@ -50,7 +50,7 @@ See for yourself. There are three stages.
 Without any parameters Tunes searches your entire Library or however it is called in your locale but only tracks that are downloaded to your computer (file tracks as Apple calls them).
 
 If you add a phrase ```Tunes``` plugin searches for playlists that contain that phrase (it doesn't need to be entire playlist title). 
-If you add Online right after Tunes command (it can be followed by search phrase) also online tracks will be included in results. Mind however that in my modest music collection there is currently 700 local tracks and 15500 altogether. Grabbing online tracks takes longer.[^1] [^2]
+If you add Online right after Tunes command (it can be followed by search phrase) also online tracks will be included in results. Mind however that in my modest music collection there is currently 700 local tracks and 15500 altogether. Grabbing online tracks takes longer. [^1] [^2]
 
 2) Fuzzy search through song (with fzf) looking for tracks
 
@@ -61,7 +61,7 @@ If more then one playlist matched your ```Tunes ``` search you can have multiple
 
 3) Press Enter to select and play track.
 
-This script only plays one selected track and then falls back to whatever is in iTunes play queue. You can of course select and play another track.[^2]
+This script only plays one selected track and then falls back to whatever is in your iTunes play queue. You can of course select and play another track. [^2] [^4]
 
 4) Repeat 2) and 3) as long as you wish.
 
@@ -77,9 +77,9 @@ Searching with fzf is cool. Also the plugin is using JXA instead of walking disa
 
 Not async - loading all tracks and playlist can take time.[^2]
 
-It plays only single track.[^2]
+It plays only single track. [^2] [^4]
 
-Next release should fix this.[^3]
+Next release should fix this. [^3]
 
 ## But I yet don't need another plugin
 
@@ -109,5 +109,7 @@ command! -nargs=* Itunes call fzf#run({
 
 [^2]: If you prefer non-blocking plugin that is playing entire playlists and working asynchronously try [my fork of Thrasher plugin](https://github.com/chew-z/thrasher).
 
-[^3]: I am sorry. English spellchecking is broken in my VIM. I have to fix this first.
+[^3]: I am sorry. English spellchecking is broken for markdown in my VIM. I have to fix this first.
+
+[^4]: fzf has multiline select feature so we can create ad hoc playlist and play queue. I am thinking about it.
 
