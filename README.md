@@ -20,22 +20,22 @@ Install and try for yourself:
 ## Installation
 
 
-* You will need [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. 
+* You will need[^6] [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. 
 
-* Read [fzf.vim](https://github.com/junegunn/fzf.vim) and configure fzf oprions to your taste. It helps a lot.
+* Read through [fzf.vim](https://github.com/junegunn/fzf.vim) and [fzf](https://github.com/junegunn/fzf) and configure fzf options to your taste. It helps a lot.
 
-* If you are using MacVim you need a glue connecting fzf and MacVim. But this is all up to fzf installation and configuration.
+* If you are using MacVim you need a glue connecting fzf and MacVim. But this is up to fzf installation and configuration and not this plugin.
 
 I am using [Vim-Plug](https://github.com/junegunn/vim-plug) and don't know much about other plugin managers. In Vim-Plug just add [in right place] to your .vimrc:
 
-``` chew-z/itunes.vim ``` 
+``` Plug 'chew-z/itunes.vim'```
 
 and run
 
 
-```PlugInstall```
+```:PlugInstall```
 
-This plugin includes two compiled Javascript scripts - [JXA (Javascript for Automation)](https://gist.github.com/JMichaelTX/d29adaa18088572ce6d4) - that work with iTunes. Trust me there is no malcious code inside.
+This plugin includes two compiled Javascript scripts - JXA [(Javascript for Automation)](https://gist.github.com/JMichaelTX/d29adaa18088572ce6d4) - that work with iTunes. Trust me there is no malcious code inside.
 
 Because you should not trust people on the internet you can review the code (in .js files) and compile for yourself.
 
@@ -72,7 +72,7 @@ fzf is searching through
 - playlist tittle
 - track tittle
 - track album
-- track artists 
+- track artist
 
 Try, this is cool, fzf is great tool.
 
@@ -166,3 +166,5 @@ Even pushing commits is hard. Hence the Offline option is default.
 [^4]: fzf has multiline select feature so we can create ad hoc playlists and play queues. I am thinking about it.
 
 [^5]: This is using ```--bind=execute-silent``` a bit esotheric (and damm difficult to debug) feature of fzf
+
+[^6]: Did I mention it works only on Mac?
