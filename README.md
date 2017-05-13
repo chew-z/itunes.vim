@@ -20,7 +20,11 @@ Install and try for yourself:
 ## Installation
 
 
-You will need [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. Read [fzf.vim](https://github.com/junegunn/fzf.vim). If you are using MacVim you need a glue connecting fzf and MacVim. But this is all up to fzf installation and configuration.
+* You will need [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. 
+
+* Read [fzf.vim](https://github.com/junegunn/fzf.vim) and configure fzf oprions to your taste. It helps a lot.
+
+* If you are using MacVim you need a glue connecting fzf and MacVim. But this is all up to fzf installation and configuration.
 
 I am using [Vim-Plug](https://github.com/junegunn/vim-plug) and don't know much about other plugin managers. In Vim-Plug just add to your .vimrc:
 
@@ -47,11 +51,19 @@ See for yourself. There are three stages.
 
 1) Enter ```Tunes``` command in VIM to search for playlist(s). 
 
-Without any parameters Tunes searches your entire Library or however it is called in your locale but only tracks that are downloaded to your computer (file tracks as Apple calls them).
+Without any parameters Tunes searches your entire Library or however it is called in your locale but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them).
 
-If you add a phrase after ```Tunes``` plugin searches for playlists that contain that phrase (it doesn't need to be entire playlist title)
+If you add a phrase after ```Tunes``` this plugin searches for playlists that contain that phrase (it doesn't need to be entire playlist title)
 
-If you add Online right after Tunes command (it can be still followed by search phrase) also online tracks will be included in results. Mind however that in my modest music collection there is currently 700 local tracks and 15500 altogether. Grabbing online tracks takes longer. [^1] [^2]
+If you preced search phrase with Online plugin will search also for subscribed tracks (in Apple parlance) - tracks that are in your playlists but haven't been downloaded to your Mac. 
+
+Mind however that in my modest music collection there is currently 700 odd local tracks and 15500 altogether. Grabbing on-line tracks is heavy and this is blocking plugin. [^1] [^2]
+
+If you still insists on getting on-line tracks every time just add to your .vimrc.
+
+```let g:itunes_online = 1``` 
+
+Or test [my fork of Thrasher plugin](https://github.com/chew-z/thrasher) which is grabbing tracks async.
 
 2) Fuzzy search through songs
 
@@ -76,7 +88,6 @@ This script only plays[^5] one selected track and then falls back to whatever is
 
 5) Press Escape to exit fzf and **do something productive in VIM**.
 
-If you add Online in front of search phrase the plugin will search also for subscribed tracks (in Apple parlance) - tracks that are in your playlists but haven't been downloaded to your Mac. 
 
 ## Why is it cool?
 
