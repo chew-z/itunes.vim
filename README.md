@@ -6,9 +6,9 @@ Install and try for yourself:
 
 * Search tracks in your Library on your Mac ```:Tunes ```
 
-* Search for a playlist ```:Tunes Women who know how to sing ```
+* Search through single playlist ```:Tunes Women who know how to sing ```
 
-* Search using only part of playlist name ```:Tunes Women who ```
+* Use only part of playlist name ```:Tunes Women who ```
 
 * Include tracks that are not downloaded to your Mac (Apple Music) ```:Tunes Online Women who know ```
 
