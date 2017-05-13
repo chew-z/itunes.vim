@@ -21,7 +21,7 @@ function run(argv) {
     if (verbose) { console.log(argv); }                                         // print arguments
     if (argc == 4) { argv = ['Offline', 'Library']; }                           // if empty initialize with defaults
     let searchQuery = 'Library';
-    if (argv[0] == 'Offline') {
+    if (argv[0] == 'Offline' || argv[0] == 'Online') {
         searchQuery = argv.slice(1).join(' ');
     } else {
        searchQuery = argv.join(' '); 
