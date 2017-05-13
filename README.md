@@ -117,7 +117,7 @@ function! s:itunes_handler(line)
     call system('osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Play_Track.scpt ' . l:title)
 endfunction
 
-command! -nargs=* Itunes call fzf#run({
+command! -nargs=* Tunes call fzf#run({
     \ 'source':  'osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Search_fzf.scpt ' .  <q-args>,
     \ 'sink':   function('<sid>itunes_handler'),
     \ 'options': '--header "Enter to play track. Esc to exit."' . ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^.*| //g''  | xargs osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Play_Track.scpt ' . ')" ' . ' --preview="echo -e {} | tr ''|'' ''\n'' | sed -e ''s/^ //g'' | tail -r " ' . ' --preview-window down:4:wrap' . ' --bind "?:toggle-preview"'
