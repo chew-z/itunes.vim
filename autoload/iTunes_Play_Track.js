@@ -1,7 +1,7 @@
 #!/usr/bin/env osascript -l JavaScript
 // @flow
 // @flow-NotIssue
-// osacompile -l JavaScript -o play.scpt play.js
+// osacompile -l JavaScript -o iTunes_Play_Tracks.scpt iTunes_Play_Tracks.js
 ObjC.import("stdlib")
 function run(argv) {
     'use strict';
