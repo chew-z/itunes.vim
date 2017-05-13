@@ -3,6 +3,7 @@
 
 Install and try for yourself:
 
+![itunes.vim GIF](gif/itunes.gif)
 
 * Search tracks in your Library on your Mac ```:Tunes ```
 
