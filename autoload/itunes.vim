@@ -35,7 +35,7 @@ function! s:handler(line)
     call system('osascript -l JavaScript ' . s:jxa.Play. l:title)
 endfunction
 
-function! itunes#search_and_play(a:args)
+function! itunes#search_and_play(args)
     call fzf#run({
     \ 'source':  'osascript -l JavaScript ' . s:jxa.Search .  a:args,
     \ 'sink':   function('s:handler'),
