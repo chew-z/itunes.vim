@@ -1,5 +1,5 @@
 # itunes.vim
-Fuzzy search and play iTunes tracks from VIM
+**Fuzzy search and play iTunes tracks from VIM**
 
 Install and try for yourself:
 
@@ -12,7 +12,7 @@ Install and try for yourself:
 
 * Include tracks that are not downloaded to your Mac (Apple Music) ```:Tunes Online Women who know ```
 
-* Same as ```:Tunes`` - ```:Tunes Library``` or ```:Tunes Offline Library```
+* Same as ```:Tunes``` - ```:Tunes Library``` or ```:Tunes Offline Library```
 
 * Everything in your collection ```:Tunes Online```
 
@@ -26,7 +26,7 @@ Install and try for yourself:
 
 * If you are using MacVim you need a glue connecting fzf and MacVim. But this is all up to fzf installation and configuration.
 
-I am using [Vim-Plug](https://github.com/junegunn/vim-plug) and don't know much about other plugin managers. In Vim-Plug just add to your .vimrc:
+I am using [Vim-Plug](https://github.com/junegunn/vim-plug) and don't know much about other plugin managers. In Vim-Plug just add [in right place] to your .vimrc:
 
 ``` chew-z/itunes.vim ``` 
 
@@ -35,9 +35,9 @@ and run
 
 ```PlugInstall```
 
-This plugin includes two compiled Javascript scripts - [JXA (Javascript for Automation)](https://gist.github.com/JMichaelTX/d29adaa18088572ce6d4) - that work with iTunes. Tust me there is no malcious code inside.
+This plugin includes two compiled Javascript scripts - [JXA (Javascript for Automation)](https://gist.github.com/JMichaelTX/d29adaa18088572ce6d4) - that work with iTunes. Trust me there is no malcious code inside.
 
-But because you should not trust people on the internet you can review the code (in .js files) and compile for yourself.
+Because you should not trust people on the internet you can review the code (in .js files) and compile for yourself.
 
 ```
 osacompile -l JavaScript -o iTunes_Search_fzf.scpt iTunes_Search_fzf.js
@@ -51,13 +51,13 @@ See for yourself. There are three stages.
 
 1) Enter ```Tunes``` command in VIM to search for playlist(s). 
 
-Without any parameters Tunes searches your entire Library or however it is called in your locale but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them).
+Without any parameters Tunes searches your entire Library (or however it is called in your locale) but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them).
 
-If you add a phrase after ```Tunes``` this plugin searches for playlists that contain that phrase (it doesn't need to be entire playlist title)
+If you add a phrase after ```Tunes``` this plugin searches for playlists that contain that phrase (it doesn't need to be whole playlist title)
 
-If you preced search phrase with Online plugin will search also for subscribed tracks (in Apple parlance) - tracks that are in your playlists but haven't been downloaded to your Mac. 
+If you preced search phrase with word ```Online``` plugin will search also for subscribed tracks (in Apple parlance) - tracks that are in your playlists but haven't been downloaded to your Mac. 
 
-Mind however that in my modest music collection there is currently 700 odd local tracks and 15500 altogether. Grabbing on-line tracks is heavy and this is blocking plugin. [^1] [^2]
+Mind however that in my modest music collection there is currently 700 odd local tracks and 15 500 tracks altogether. Grabbing on-line tracks is heavy and this is blocking plugin. [^1] [^2]
 
 If you still insists on getting on-line tracks every time just add to your .vimrc.
 
@@ -95,13 +95,13 @@ Searching with fzf is cool. Also the plugin is using JXA instead of walking disa
 
 ## Why it isn't?
 
-Not async - loading all tracks and playlist can take time.[^2]
+Not async - loading all tracks and playlists can take time.[^2]
 
-It plays only single track. [^2] [^4]
+It plays only single track. [^2] [^4] Next release should fix this. [^3]
 
-Next release should fix this. [^3]
 
 ## But I don't need yet another VIM plugin
+
 
 Fair enough.
 
@@ -123,7 +123,9 @@ command! -nargs=* Itunes call fzf#run({
     \ })
 ```
 
-## VIM just to play single track in iTunes?
+
+## Why use VIM just to play single track in iTunes?
+
 
 You are right. Just add following alias to your .zshrc or whatever shell you use [zsh tested].
 
@@ -144,13 +146,15 @@ tunes() {
 }
 ```
 
+
 ## Footnotes.
+
 
 [^0]: How do you create proper footnotes in this weird markdown flavour?
 
 [^1]: This is not First World problem but I am developing this plugin on an island off Sumatra and Internet could be spotty and my mobile package is limited. 
 
-Just right now internet slowed down to [EDGE (check in Wikipedia if you are too young to know what is is)](https://en.wikipedia.org/wiki/Enhanced_Data_Rates_for_GSM_Evolution) - cause of rain and heavey wind during the night probably. 
+Just right now internet slowed down to [EDGE (check in Wikipedia if you are too young to know what it is)](https://en.wikipedia.org/wiki/Enhanced_Data_Rates_for_GSM_Evolution) - cause of rain and heavey wind during the night probably. 
 
 Even pushing commits is hard. Hence the Offline option is default. 
 
@@ -158,6 +162,6 @@ Even pushing commits is hard. Hence the Offline option is default.
 
 [^3]: I am sorry. English spellchecking is broken for markdown in my VIM. I have to fix this first.
 
-[^4]: fzf has multiline select feature so we can create ad hoc playlist and play queue. I am thinking about it.
+[^4]: fzf has multiline select feature so we can create ad hoc playlists and play queues. I am thinking about it.
 
 [^5]: This is using ```--bind=execute-silent``` a bit esotheric (and damm difficult to debug) feature of fzf
