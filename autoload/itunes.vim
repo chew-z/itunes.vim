@@ -48,6 +48,6 @@ function! itunes#search_and_play(args)
     call fzf#run({
     \ 'source':  'osascript -l JavaScript ' . s:jxa.Search .  ' ' . l:args,
     \ 'sink':   function('s:handler'),
-    \ 'options': '--header "Enter to play track. Esc to exit."' . ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^.*| //g''  | xargs osascript -l JavaScript ' .  s:jxa.Play . ')" ' . ' --preview="echo -e {} | tr ''|'' ''\n'' | sed -e ''s/^ //g'' | tail -r " ' . ' --preview-window down:4:wrap' . ' --bind "?:toggle-preview"'
+    \ 'options': '--header "Enter to play track. Esc to exit. ? toggles preview"' . ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^.*| //g''  | xargs osascript -l JavaScript ' .  s:jxa.Play . ')" ' . ' --preview="echo -e {} | tr ''|'' ''\n'' | sed -e ''s/^ //g'' | tail -r " ' . ' --preview-window down:4:wrap' . ' --bind "?:toggle-preview"'
     \ })
 endfunction

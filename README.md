@@ -1,5 +1,5 @@
 # itunes.vim
-**Fuzzy search and play iTunes tracks from VIM**
+**Fuzzy search and play iTunes tracks from VIM. You have no idea what gems are hidden in your Music Library**
 
 Install and try for yourself:
 
@@ -20,7 +20,7 @@ Install and try for yourself:
 ## Installation
 
 
-* You will need[^6] [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. 
+* You will need [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. [^6] 
 
 * Read through [fzf.vim](https://github.com/junegunn/fzf.vim) and [fzf](https://github.com/junegunn/fzf) and configure fzf options to your taste. It helps a lot.
 
@@ -53,7 +53,7 @@ See for yourself. There are three stages.
 
 Without any parameters Tunes searches your entire Library (or however it is called in your locale) but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them).
 
-If you add a phrase after ```Tunes``` this plugin searches for playlists that contain that phrase (it doesn't need to be whole playlist title)
+If you add a phrase after ```:Tunes``` this plugin searches for playlists that contain that phrase (it doesn't need to be whole playlist title)
 
 If you preced search phrase with word ```Online``` plugin will search also for subscribed tracks (in Apple parlance) - tracks that are in your playlists but haven't been downloaded to your Mac. 
 
@@ -78,7 +78,7 @@ Try, this is cool, fzf is great tool.
 
 You can toggle preview window with '?'. Or clear your search phrase with Ctrl-U (like in terminal).
 
-If more then one playlist matched your ```Tunes ``` search you can have multiple results (the track is part of more then one playlist).
+If more then one playlist matches your ```:Tunes ``` search you could have doubled/multiplied results (the track belongs to more then one playlist). I think it is cool feature as I can finally find where my tracks got lost.
 
 3) Press Enter to select and play track.
 
@@ -86,7 +86,7 @@ This script only plays[^5] one selected track and then falls back to whatever is
 
 4) Repeat 2) and 3) as long as you wish.
 
-5) Press Escape to exit fzf and **do something productive in VIM**.
+5) Press Escape to exit fzf window and **do something productive in VIM**.
 
 
 ## Why is it cool?
