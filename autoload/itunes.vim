@@ -17,6 +17,10 @@ if !executable('fzf')
     finish
 endif
 
+if !exists('g:itunes_online')
+    let g:itunes_online = 0
+endif
+
 let s:jxa_folder = expand('<sfile>:p:h')
 echom s:jxa_folder
 let s:jxa = {
@@ -36,8 +40,13 @@ function! s:handler(line)
 endfunction
 
 function! itunes#search_and_play(args)
+    if g:itunes_online
+        let l:args = 'Online ' . a:args
+    else
+        let l:args = a:args
+    endif
     call fzf#run({
-    \ 'source':  'osascript -l JavaScript ' . s:jxa.Search .  ' ' . a:args,
+    \ 'source':  'osascript -l JavaScript ' . s:jxa.Search .  ' ' . l:args,
     \ 'sink':   function('s:handler'),
     \ 'options': '--header "Enter to play track. Esc to exit."' . ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^.*| //g''  | xargs osascript -l JavaScript ' .  s:jxa.Play . ')" ' . ' --preview="echo -e {} | tr ''|'' ''\n'' | sed -e ''s/^ //g'' | tail -r " ' . ' --preview-window down:4:wrap' . ' --bind "?:toggle-preview"'
     \ })

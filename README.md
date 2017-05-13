@@ -12,9 +12,9 @@ Install and try for yourself:
 
 * Include tracks that are not downloaded to your Mac (Apple Music) ```:Tunes Online Women who know ```
 
-* ```Tunes ```
+* Same as ```:Tunes`` - ```:Tunes Library``` or ```:Tunes Offline Library```
 
-* Every track in your collection ```Tunes Online```
+* Everything in your collection ```:Tunes Online```
 
 
 ## Installation
@@ -49,19 +49,28 @@ See for yourself. There are three stages.
 
 Without any parameters Tunes searches your entire Library or however it is called in your locale but only tracks that are downloaded to your computer (file tracks as Apple calls them).
 
-If you add a phrase ```Tunes``` plugin searches for playlists that contain that phrase (it doesn't need to be entire playlist title). 
-If you add Online right after Tunes command (it can be followed by search phrase) also online tracks will be included in results. Mind however that in my modest music collection there is currently 700 local tracks and 15500 altogether. Grabbing online tracks takes longer. [^1] [^2]
+If you add a phrase after ```Tunes``` plugin searches for playlists that contain that phrase (it doesn't need to be entire playlist title)
 
-2) Fuzzy search through song (with fzf) looking for tracks
+If you add Online right after Tunes command (it can be still followed by search phrase) also online tracks will be included in results. Mind however that in my modest music collection there is currently 700 local tracks and 15500 altogether. Grabbing online tracks takes longer. [^1] [^2]
 
-fzf is searching through playlist tittle, track tittle, track album and track artists. This is cool. fzf is great tool.
+2) Fuzzy search through songs
+
+fzf is searching through
+
+- playlist tittle
+- track tittle
+- track album
+- track artists 
+
+Try, this is cool, fzf is great tool.
+
 You can toggle preview window with '?'. Or clear your search phrase with Ctrl-U (like in terminal).
 
 If more then one playlist matched your ```Tunes ``` search you can have multiple results (the track is part of more then one playlist).
 
 3) Press Enter to select and play track.
 
-This script only plays one selected track and then falls back to whatever is in your iTunes play queue. You can of course select and play another track. [^2] [^4]
+This script only plays[^5] one selected track and then falls back to whatever is in your iTunes play queue. You can of course select and play another track. [^2] [^4]
 
 4) Repeat 2) and 3) as long as you wish.
 
@@ -81,7 +90,7 @@ It plays only single track. [^2] [^4]
 
 Next release should fix this. [^3]
 
-## But I yet don't need another plugin
+## But I don't need yet another VIM plugin
 
 Fair enough.
 
@@ -103,9 +112,36 @@ command! -nargs=* Itunes call fzf#run({
     \ })
 ```
 
+## VIM just to play single track in iTunes?
+
+You are right. Just add following alias to your .zshrc or whatever shell you use [zsh tested].
+
+```
+tunes() {
+# usage: tunes [Online] [Partial name of playlist] or just tunes. Enter to play, Esc ro exit.
+    local jxa_dir=''WHERE DID YOU PUT JXA FILES?'
+    osascript -l JavaScript $jxa_dir/iTunes_Search_fzf.scpt $@ |\
+    fzf \
+        --header "Enter to play. Esc to exit. ? toggles preview window." \
+        --bind "enter:execute-silent(echo -n {} | gsed -e 's/^.*| //g'  | xargs osascript -l JavaScript $jxa_dir/iTunes_Play_Track.scpt )" \
+        --bind '?:toggle-preview' \
+        --preview "echo -e {} | tr '|' '\n' | sed -e 's/^ //g' | tail -r " \
+        --preview-window down:4:wrap |\
+        sed -e 's/^.*| //g' |\
+# This is never used unless we re-bind Enter. Esc simply quits fzf without any action.
+    xargs osascript -l JavaScript $jxa_dir/play.scpt
+}
+```
+
 ## Footnotes.
 
-[^1]: This is not First World problem but I am developing this plugin on an island off Sumatra and Internet could be spotty and my mobile package is limited. Hence the Offline option is default.
+[^0]: How do you create proper footnotes in this weird markdown flavour?
+
+[^1]: This is not First World problem but I am developing this plugin on an island off Sumatra and Internet could be spotty and my mobile package is limited. 
+
+Just right now internet slowed down to [EDGE (check in Wikipedia if you are too young to know what is is)](https://en.wikipedia.org/wiki/Enhanced_Data_Rates_for_GSM_Evolution) - cause of rain and heavey wind during the night probably. 
+
+Even pushing commits is hard. Hence the Offline option is default. 
 
 [^2]: If you prefer non-blocking plugin that is playing entire playlists and working asynchronously try [my fork of Thrasher plugin](https://github.com/chew-z/thrasher).
 
@@ -113,3 +149,4 @@ command! -nargs=* Itunes call fzf#run({
 
 [^4]: fzf has multiline select feature so we can create ad hoc playlist and play queue. I am thinking about it.
 
+[^5]: This is using ```--bind=execute-silent``` a bit esotheric (and damm difficult to debug) feature of fzf
