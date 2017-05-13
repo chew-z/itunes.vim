@@ -49,7 +49,7 @@ osacompile -l JavaScript -o iTunes_Play_Tracks.scpt iTunes_Play_Tracks.js
 
 See for yourself. There are three stages. 
 
-1) Enter ```Tunes``` command in VIM to search for playlist(s). 
+1) Enter ```:Tunes``` command in VIM to search for playlist(s). 
 
 Without any parameters Tunes searches your entire Library (or however it is called in your locale) but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them).
 
@@ -146,6 +146,7 @@ tunes() {
 }
 ```
 
+Restart your Terminal/iTerm and type ```tunes```
 
 ## Footnotes.
 
@@ -154,7 +155,7 @@ tunes() {
 
 [^1]: This is not First World problem but I am developing this plugin on an island off Sumatra and Internet could be spotty and my mobile package is limited. 
 
-Just right now internet slowed down to [EDGE (check in Wikipedia if you are too young to know what it is)](https://en.wikipedia.org/wiki/Enhanced_Data_Rates_for_GSM_Evolution) - cause of rain and heavey wind during the night probably. 
+Just right now internet slowed down to [EDGE (check in Wikipedia if you are too young to know what it is)](https://en.wikipedia.org/wiki/Enhanced_Data_Rates_for_GSM_Evolution) - cause of rain and heavy wind during the night probably. 
 
 Even pushing commits is hard. Hence the Offline option is default. 
 
