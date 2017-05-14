@@ -32,8 +32,8 @@ function! s:handler(line)
     let l:title = l:track[len(l:track)-1]
     let l:playlist = substitute(l:track[0], ' $', '', '')
     " This is never called unless we re-bind Enter in fzf
-    let cmd = 'osascript -l JavaScript ' . s:jxa.Play . shellescape(l:playlist) . ' ' . shellescape(l:title)
-    call system(cmd)
+    let l:cmd = 'osascript -l JavaScript ' . s:jxa.Play . shellescape(l:playlist) . ' ' . shellescape(l:title)
+    call system(l:cmd)
     "call system('osascript -l JavaScript ' . s:jxa.Play . l:title)
 endfunction
 
@@ -41,7 +41,7 @@ function! itunes#search_and_play(args)
     if g:itunes_online
         let l:args = 'Online ' . a:args
     else
-        let l:args = a:args
+        let l:args = 'Offline ' . a:args
     endif
     call fzf#run({
     \ 'source':  'osascript -l JavaScript ' . s:jxa.Search .  ' ' . l:args,

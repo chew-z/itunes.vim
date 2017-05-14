@@ -11,11 +11,7 @@ Install and try for yourself:
 
 * Use only part of playlist name ```:Tunes Women who ```
 
-* Include tracks in your playlists that are not downloaded to your Mac (Apple Music) ```:Tunes Online Women who know ```
-
-* Same as ```:Tunes``` - ```:Tunes Library``` or ```:Tunes Offline Library```
-
-* Everything in your collection ```:Tunes Online```
+* Same as ```:Tunes``` - ```:Tunes Library``` 
 
 
 ## Installation
@@ -54,17 +50,13 @@ See for yourself. There are three stages.
 
 Without any parameters Tunes searches your entire Library (or however it is called in your locale) but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them).
 
-If you add a phrase after ```:Tunes``` this plugin searches for playlists that contain that phrase (it doesn't need to be whole playlist title)
-
-If you preced search phrase with word ```Online``` plugin will search also for subscribed tracks (in Apple parlance) - tracks that are in your playlists but haven't been downloaded to your Mac. 
-
-Mind however that in my modest music collection there is currently 700 odd local tracks and 15 500 tracks altogether. Grabbing on-line tracks is heavy and this is blocking plugin. [^1] [^2]
-
-If you still insists on getting on-line tracks every time just add to your .vimrc.
+If you insists on getting on-line tracks every time just add to your .vimrc.
 
 ```let g:itunes_online = 1``` 
 
-Or test [my fork of Thrasher plugin](https://github.com/chew-z/thrasher) which is grabbing tracks async.
+Mind however that in my modest music collection there is currently 700 odd local tracks and 15 500 tracks altogether. Grabbing on-line tracks is heavy and this is blocking plugin. [^1] [^2]
+
+Test [my fork of Thrasher plugin](https://github.com/chew-z/thrasher) which is grabbing tracks async.
 
 2) Fuzzy search through songs
 
@@ -83,7 +75,7 @@ If more then one playlist matches your ```:Tunes ``` search you could have doubl
 
 3) Press Enter to select and play track.
 
-Plugin plays selected track in context of choosen playlist. Play queue is filled with playlist and we start playing from selected tracks. It clears what has been in iTunes queue before.
+Plugin now plays selected track in a context of choosen playlist. Play queue is filled with playlist and we start playing from selected tracks. It clears what has been in iTunes queue before.
 
 4) Repeat 2) and 3) as long as you wish.
 
