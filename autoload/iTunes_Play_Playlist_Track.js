@@ -6,6 +6,7 @@ ObjC.import("stdlib")
 function run(argv) {
     'use strict';
     const itunes = Application('iTunes');
+    const library = itunes.sources.whose({kind: "klib"})[0];
     const verbose = false;
 
     var args = $.NSProcessInfo.processInfo.arguments                            // NSArray
@@ -18,22 +19,26 @@ function run(argv) {
     }
     if (verbose) { console.log(argv) }                                          // print arguments
     if(argv.length == 0) {
-        if (verbose) { console.log('Usage: play [ track ]'); }
+        if (verbose) { console.log('Usage: play [ playlist] [ track ]'); }
         $.exit(1);
     }
-    let query = argv.join(' ');
-    if (verbose) { console.log(query) }
     try {
-        let result = itunes.tracks.whose({ name: { _contains: query } })
-        if (result.length > 0) {
-            // result.forEach( r => { console.log( `${r.name()}` )})
-            result[0].play();
-            $.exit(0)
-        } else { 
-            console.log('Track not found');
-            $.exit(1) }
+        
+        let playlist = itunes.playlists.byName(argv[0]);
+        if (verbose) { console.log('Playing from: ', playlist.name(), JSON.stringify(playlist.properties())) } 
+        let tracks = playlist.tracks();
+        if (verbose) { tracks.forEach(t => { console.log(t.id(), t.name()) } ) } 
+        
+        playlist.play();
+
+        if ( argv.length > 1) { 
+            let track = tracks.find(t => { return t.name() == argv[1] } );
+            if (verbose) { console.log('Playing: ', track.id(), track.name()) } 
+            
+            //playlist.stop();
+            itunes.play(track);
+        }
     } catch(e) { 
-        console.log('Track unavailable - Offline?')
         console.log(e)
         $.exit(2)
     }
