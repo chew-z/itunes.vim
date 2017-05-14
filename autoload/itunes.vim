@@ -159,7 +159,10 @@ let s:jxa = {
 \ 'Play':       s:jxa_folder . '/iTunes_Play_Track.scpt',
 \ 'Search':     s:jxa_folder . '/iTunes_Search_fzf.scpt'
 \ }
+<<<<<<< HEAD
 >>>>>>> Removed debbuging echom
+=======
+>>>>>>> Removed some debugging verbose noise
 
 function! s:handler(line)
     let l:track = split(a:line, ' | ')
