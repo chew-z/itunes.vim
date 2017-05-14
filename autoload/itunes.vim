@@ -50,6 +50,15 @@ function! itunes#search_and_play(args)
         \. ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/'' | xargs osascript -l JavaScript ' .  s:jxa.Play . ')" ' .
         \ ' --preview="echo -e {} | tr ''|'' ''\n'' | sed -e ''s/^ //g'' | tail -r " ' .
         \ ' --preview-window down:4:wrap' .
-        \ ' --bind "?:toggle-preview"'
+        \ ' --bind "?:toggle-preview"' .
+        \ ' -i '
     \ })
+endfunction
+
+function! itunes#toggle_online()
+    if g:itunes_online
+        let g:itunes_online = 0
+    else
+        let g:itunes_online = 1
+    endif
 endfunction

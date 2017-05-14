@@ -54,9 +54,9 @@ If you insists on getting on-line tracks every time just add to your .vimrc.
 
 ```let g:itunes_online = 1``` 
 
-Mind however that in my modest music collection there is currently 700 odd local tracks and 15 500 tracks altogether. Grabbing on-line tracks is heavy and this is blocking plugin. [^1] [^2]
+Mind however that grabbing also on-line tracks (in entire collection) is heavy and this is blocking plugin. Try narrowing search. Otherwise you want enjoy using this plugin. [^1] [^2]
 
-Test [my fork of Thrasher plugin](https://github.com/chew-z/thrasher) which is grabbing tracks async.
+Test [my fork of Thrasher plugin](https://github.com/chew-z/thrasher) which is grabbing tracks async and remembering Library. Results are shown in instant..
 
 2) Fuzzy search through songs
 
