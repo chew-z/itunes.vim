@@ -24,15 +24,15 @@ function run(argv) {
     if (argv[0] == 'Offline' || argv[0] == 'Online') {
         searchQuery = argv.slice(1).join(' ');
     } else {
-       searchQuery = argv.join(' '); 
+        searchQuery = argv.join(' '); 
     }
     if (verbose) { console.log(searchQuery); }
-    
-	try {
-        let playlists = [library.playlists()[0]];                                 // Library playlist
+
+    try {
+        let playlists = [library.playlists()[0]];                               // Library playlist
         if (searchQuery !== 'Library') {
             playlists = itunes.playlists.whose( { name: { _contains: searchQuery } })().filter(p => {
-		        return p.duration() > 0 ; });
+                return p.duration() > 0 ; });
         }
         if (verbose) { playlists.forEach( p => { console.log(p.name(), p.class()) }) }
 
@@ -50,13 +50,14 @@ function run(argv) {
                     // return `${t.name()} | ${t.artist()} | ${t.album()}` }) 
                     return `${p.name()} | ${t.artist()} | ${t.album()} | ${t.name()}` 
                 }) 
-            })) }
-       
+            })) 
+        }
+
         if (tr.length > 0) {
-             return tr.join('\n');
+            return tr.join('\n');
         } else { $.exit(1) }
-	} catch(e) {
-		console.log(e);
+    } catch(e) {
+        console.log(e);
         $.exit(2)
-	}
+    }
 }

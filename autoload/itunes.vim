@@ -24,6 +24,7 @@ if !exists('g:itunes_online')
     let g:itunes_online = 0
 endif
 
+<<<<<<< HEAD
 if !exists('g:itunes_verbose')
     let g:itunes_verbose = 0
 endif
@@ -152,6 +153,13 @@ let s:tracks = []
 let s:online = g:itunes_online
 
 " FZF sink function
+=======
+let s:jxa_folder = expand('<sfile>:p:h')
+let s:jxa = {
+\ 'Play':       s:jxa_folder . '/iTunes_Play_Track.scpt',
+\ 'Search':     s:jxa_folder . '/iTunes_Search_fzf.scpt'
+\ }
+>>>>>>> Removed debbuging echom
 
 function! s:handler(line)
     let l:track = split(a:line, ' | ')
