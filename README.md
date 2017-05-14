@@ -97,8 +97,6 @@ Searching with fzf is cool. Also the plugin is using JXA instead of walking disa
 
 Not async - loading all tracks and playlists can take time.[^2]
 
-It plays only single track. [^2] [^4] Next release should fix this. [^3]
-
 
 ## But I don't need yet another VIM plugin
 
@@ -112,15 +110,28 @@ let s:jxa_folder = 'WHERE DID YOU PUT JXA FILES?'
 
 function! s:itunes_handler(line)
     let l:track = split(a:line, ' | ')
+    " call append(line('$'), a:line)
+    " normal! ^zz
+    let l:title = l:track[len(l:track)-1]
+    let l:playlist = substitute(l:track[0], ' $', '', '')
+    " echom l:playlist
+    " echom join(l:track, ' ')
     " This is never called unless we re-bind Enter in fzf
-    call system('osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Play_Track.scpt ' . l:title)
+    let cmd = 'osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Play_Playlist_Track.scpt ' . shellescape(l:playlist) . ' ' . shellescape(l:title)
+    echom cmd
+    let l:resp = system(cmd)
+    echom l:resp
 endfunction
 
-command! -nargs=* Itunes call fzf#run({
+command! -nargs=* Tunes call fzf#run({
     \ 'source':  'osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Search_fzf.scpt ' .  <q-args>,
     \ 'sink':   function('<sid>itunes_handler'),
-    \ 'options': '--header "Enter to play track. Esc to exit."' . ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^.*| //g''  | xargs osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Play_Track.scpt ' . ')" ' . ' --preview="echo -e {} | tr ''|'' ''\n'' | sed -e ''s/^ //g'' | tail -r " ' . ' --preview-window down:4:wrap' . ' --bind "?:toggle-preview"'
-    \ })
+    \ 'options': '--header "Enter to play track. Esc to exit."' . 
+    \ ' --preview="echo -e {} | tr ''|'' ''\n'' | gsed -e ''s/^ //g'' | tail -r " ' .
+    \ ' --preview-window down:4:wrap' . 
+    \ ' --bind "?:toggle-preview"' .
+    \ ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/'' | xargs osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Play_Playlist_Track.scpt ' .  ')" '
+    \ }
 ```
 
 
@@ -136,13 +147,13 @@ tunes() {
     osascript -l JavaScript $jxa_dir/iTunes_Search_fzf.scpt $@ |\
     fzf \
         --header "Enter to play. Esc to exit. ? toggles preview window." \
-        --bind "enter:execute-silent(echo -n {} | gsed -e 's/^.*| //g'  | xargs osascript -l JavaScript $jxa_dir/iTunes_Play_Track.scpt )" \
+        --bind "enter:execute-silent(echo -n {} | sed -e 's/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/' | xargs osascript -l JavaScript $jxa_dir/iTunes_Play_Playlist_Track.scpt )" \
         --bind '?:toggle-preview' \
         --preview "echo -e {} | tr '|' '\n' | sed -e 's/^ //g' | tail -r " \
         --preview-window down:4:wrap |\
         sed -e 's/^.*| //g' |\
 # This is never used unless we re-bind Enter. Esc simply quits fzf without any action.
-    xargs osascript -l JavaScript $jxa_dir/play.scpt
+    xargs osascript -l JavaScript $jxa_dir/iTunes_Play_Playlist_Track.scpt
 }
 ```
 
