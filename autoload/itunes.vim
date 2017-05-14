@@ -22,14 +22,10 @@ if !exists('g:itunes_online')
 endif
 
 let s:jxa_folder = expand('<sfile>:p:h')
-echom s:jxa_folder
 let s:jxa = {
 \ 'Play':       s:jxa_folder . '/iTunes_Play_Track.scpt',
 \ 'Search':     s:jxa_folder . '/iTunes_Search_fzf.scpt'
 \ }
-echom s:jxa.Play
-echom s:jxa.Search
-
 
 function! s:handler(line)
     let l:track = split(a:line, ' | ')

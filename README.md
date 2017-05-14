@@ -5,13 +5,13 @@ Install and try for yourself:
 
 ![itunes.vim GIF](gif/itunes.gif)
 
-* Search tracks in your Library on your Mac ```:Tunes ```
+* Search tracks in Library on your Mac ```:Tunes ```
 
 * Search through single playlist ```:Tunes Women who know how to sing ```
 
 * Use only part of playlist name ```:Tunes Women who ```
 
-* Include tracks that are not downloaded to your Mac (Apple Music) ```:Tunes Online Women who know ```
+* Include tracks in your playlists that are not downloaded to your Mac (Apple Music) ```:Tunes Online Women who know ```
 
 * Same as ```:Tunes``` - ```:Tunes Library``` or ```:Tunes Offline Library```
 
@@ -79,7 +79,7 @@ Try, this is cool, fzf is great tool.
 
 You can toggle preview window with '?'. Or clear your search phrase with Ctrl-U (like in terminal).
 
-If more then one playlist matches your ```:Tunes ``` search you could have doubled/multiplied results (the track belongs to more then one playlist). I think it is cool feature as I can finally find where my tracks got lost.
+If more then one playlist matches your ```:Tunes ``` search you could have doubled/multiplied results (if the track belongs to more then one playlist). I think it is cool feature as I can finally locate where my tracks got lost.
 
 3) Press Enter to select and play track.
 
@@ -128,7 +128,7 @@ command! -nargs=* Tunes call fzf#run({
 ## Why use VIM just to play single track in iTunes?
 
 
-You are right. Just add following alias to your .zshrc or whatever shell you use [zsh tested].
+You are right. Just add following function to your .zshrc or whatever shell you use [zsh tested].
 
 ```
 tunes() {
