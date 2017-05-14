@@ -53,7 +53,9 @@ Without any parameters Tunes searches your entire Library (or however it is call
 
 If you insists on getting on-line tracks every time just add to your .vimrc.
 
-```let g:itunes_online = 1``` 
+```let g:itunes_online = 1```
+
+You can also toggle Online/Offline mode with ```TunesOnline``` command.
 
 Mind however that grabbing also on-line tracks (in entire collection) is heavy and this is blocking plugin. Try narrowing search. Otherwise you want enjoy using this plugin. [^1] [^2]
 
