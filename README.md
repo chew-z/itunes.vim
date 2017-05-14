@@ -82,7 +82,7 @@ If more then one playlist matched your ```Tunes ``` search you can have multiple
 
 3) Press Enter to select and play track.
 
-This script only plays[^5] one selected track and then falls back to whatever is in your iTunes play queue. You can of course select and play another track. [^2] [^4]
+Plugin plays selected track in context of choosen playlist. Play queue is filled with playlist and we start playing from selected tracks. It clears what has been in iTunes queue before.
 
 4) Repeat 2) and 3) as long as you wish.
 
@@ -158,10 +158,6 @@ Restart your Terminal/iTerm and type ```tunes```
 Just right now internet slowed down to [EDGE (check in Wikipedia if you are too young to know what it is)](https://en.wikipedia.org/wiki/Enhanced_Data_Rates_for_GSM_Evolution) - cause of rain and heavy wind during the night probably. 
 
 Even pushing commits is hard. Hence the Offline option is default. 
-
-[^2]: If you prefer non-blocking plugin that is playing entire playlists and working asynchronously try [my fork of Thrasher plugin](https://github.com/chew-z/thrasher).
-
-[^3]: I am sorry. English spellchecking is broken for markdown in my VIM. I have to fix this first.
 
 [^4]: fzf has multiline select feature so we can create ad hoc playlists and play queues. I am thinking about it.
 
