@@ -51,13 +51,13 @@ See for yourself. There are three stages.
 
 Without any parameters Tunes searches your entire Library (or however it is called in your locale) but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them).
 
-If you insists on getting on-line tracks every time just add to your .vimrc.
+If you insists on getting also on-line tracks every time just add to your .vimrc.
 
 ```let g:itunes_online = 1```
 
 You can also toggle Online/Offline mode with ```TunesOnline``` command.
 
-Mind however that grabbing also on-line tracks (in entire collection) is heavy and this is blocking plugin. Try narrowing search. Otherwise you want enjoy using this plugin. [^1] [^2]
+Mind however that grabbing also on-line tracks (entire collection) is heavy and this is blocking plugin. Try narrowing search. Otherwise you want enjoy using this plugin. [^1] [^2]
 
 Test [my fork of Thrasher plugin](https://github.com/chew-z/thrasher) which is grabbing tracks async and remembering Library. Results are shown in instant..
 
@@ -165,6 +165,10 @@ Restart your Terminal/iTerm and type ```tunes```
 Just right now internet slowed down to [EDGE (check in Wikipedia if you are too young to know what it is)](https://en.wikipedia.org/wiki/Enhanced_Data_Rates_for_GSM_Evolution) - cause of rain and heavy wind during the night probably. 
 
 Even pushing commits is hard. Hence the Offline option is default. 
+
+I am iritated every time when I click on a track and nothing happens because online track cannot be downloaded.
+
+But on the other hand I can get excellent 4G if I drive 5 km to other beach. And generous package (like 20GB 4G and 20 GB at night) for a few $.
 
 [^4]: fzf has multiline select feature so we can create ad hoc playlists and play queues. I am thinking about it.
 
