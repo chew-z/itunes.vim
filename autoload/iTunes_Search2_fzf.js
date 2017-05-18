@@ -42,14 +42,14 @@ function run(argv) {
             tr = flatten(playlists.map( p => { 
                 return p.tracks().map( t => { 
                     // return `${p.name()} | ${t.artist()} | ${t.album()} | ${t.name()}` 
-                    return { id: t.id(), name: t.name(), collection: p.name(), artist: t.artist() }
+                    return { id: t.id(), name: t.name(), album: t.album(), collection: p.name(), artist: t.artist() }
                 }) 
             }))
         } else  {
             tr = flatten(playlists.map( p => { 
                 return p.fileTracks().map( t => { 
                     // return `${p.name()} | ${t.artist()} | ${t.album()} | ${t.name()}` 
-                    return { id: t.id(), name: t.name(), collection: p.name(), artist: t.artist() }
+                    return { id: t.id(), name: t.name(), album: t.album(), collection: p.name(), artist: t.artist() }
                 }) 
             })) }
        

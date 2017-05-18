@@ -30,18 +30,19 @@ endif
 
 
 let s:cache = []
-let s:jxa_folder = expand('<sfile>:p:h')
-let s:jxa = {
-\ 'Play':       s:jxa_folder .  '/iTunes_Play_Playlist_Track.scpt',
-\ 'Search':     s:jxa_folder .  '/iTunes_Search_fzf.scpt',
-\ 'Search2':    s:jxa_folder .  '/iTunes_Search2_fzf.scpt',
-\ 'Cache':      s:jxa_folder .  'Library_cache.txt'
+let s:tracks = []
+let s:folder = expand('<sfile>:p:h')
+let s:files = {
+\ 'Play':       s:folder .  '/iTunes_Play_Playlist_Track.scpt',
+\ 'Search':     s:folder .  '/iTunes_Search_fzf.scpt',
+\ 'Search2':    s:folder .  '/iTunes_Search2_fzf.scpt',
+\ 'Cache':      s:folder .  '/iTunes_Library_Cache.txt'
 \ }
 if g:itunes_verbose
-    echom s:jxa_folder
-    echom s:jxa.Play
-    echom s:jxa.Search
-    echom s:jxa.Cache
+    echom s:files_folder
+    echom s:files.Play
+    echom s:files.Search
+    echom s:files.Cache
 endif
 
 " Helper functions
@@ -66,12 +67,12 @@ endfunction
 
 function! RefreshLibrary_JobEnd(channel)
     let s:cache = s:restoreVariable(g:itunes_refreshLibrary)
-    if !filewritable(jxa_folder.Cache)
-        Silent touch jxa_folder.Cache
+    if !filewritable(s:files.Cache)
+        Silent touch s:files.Cache
     endif
-    call s:saveVariable(s:cache,jxa_folder.Cache)
+    call s:saveVariable(s:cache, s:files.Cache)
     " call itunes#refreshList()
-    if filereadable(jxa_folder.Cache) | echom 'iTunes Library refreshed' | endif
+    if filereadable(s:files.Cache) | echom 'iTunes Library refreshed' | endif
     unlet g:itunes_refreshLibrary
 endfunction
 
@@ -90,6 +91,27 @@ function! s:refreshLibrary(jxa_exec, mode)
     endif
 endfunction
 
+" Local functions
+
+function! s:transformCache(cache)
+	let currentBuf = bufnr('%')
+	let g:iTunesBufNum = bufnr('itunes_cache', 1)
+	let l:tracks = a:cache
+    if !empty(l:tracks)
+        let l:i = 1
+        for l:t in l:tracks
+            let l:line = join([l:t.collection, l:t.artist, l:t.album, l:t.name], ' | ')
+            let l:res = append(l:i, l:line)
+            let s:tracks= add(s:tracks, l:line)
+            let l:i += 1
+        endfor
+    endif
+    " exec g:iTunesBufNum . 'bufdo %d'
+    " exec 'b ' . g:iTunesBufNum
+endfunction 
+
+
+
 " FZF sink function
 
 function! s:handler(line)
@@ -97,28 +119,11 @@ function! s:handler(line)
     let l:title = l:track[len(l:track)-1]
     let l:playlist = substitute(l:track[0], ' $', '', '')
     " This is never called unless we re-bind Enter in fzf
-    let cmd = 'osascript -l JavaScript ' . s:jxa.Play . shellescape(l:playlist) . ' ' . shellescape(l:title)
+    let cmd = 'osascript -l JavaScript ' . s:files.Play . shellescape(l:playlist) . ' ' . shellescape(l:title)
     call system(cmd)
 endfunction
 
 " Exposed methods
-
-function! itunes#search_and_play(args)
-    if g:itunes_online
-        let l:args = 'Online ' . a:args
-    else
-        let l:args = a:args
-    endif
-    call fzf#run({
-    \ 'source':  'osascript -l JavaScript ' . s:jxa.Search .  ' ' . l:args,
-    \ 'sink':   function('s:handler'),
-    \ 'options': '--header "Enter to play track. Esc to exit."' 
-        \. ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/'' | xargs osascript -l JavaScript ' .  s:jxa.Play . ')" ' .
-        \ ' --preview="echo -e {} | tr ''|'' ''\n'' | sed -e ''s/^ //g'' | tail -r " ' .
-        \ ' --preview-window down:4:wrap' .
-        \ ' --bind "?:toggle-preview"'
-    \ })
-endfunction
 
 function! itunes#refresh()
     let l:jxa_path = s:files.Search2
@@ -128,3 +133,35 @@ function! itunes#refresh()
         call s:refreshLibrary(l:jxa_path, 'Offline')
     endif  
 endfunction
+
+function! itunes#transform()
+    let s:cache = s:restoreVariable(s:files.Cache)
+    call s:transformCache(s:cache)
+endfunction
+
+function! itunes#search_and_play(args)
+    " restore Music Library form disk file
+    if filereadable(s:files.Cache) | let s:cache = s:restoreVariable(s:files.Cache) | endif
+    call itunes#transform()
+    if empty(s:cache) && exists('g:itunes_refreshLibrary')
+        echom 'iTunes Library Cache empty - refreshing'
+        " TODO exit
+    endif
+
+    " if g:itunes_online
+    "     let l:args = 'Online ' . a:args
+    " else
+    "     let l:args = a:args
+    " endif
+    call fzf#run({
+    \ 'source': s:tracks,
+    \ 'sink':   function('s:handler'),
+    \ 'options': '--header "Enter to play track. Esc to exit."' 
+        \. ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/'' | xargs osascript -l JavaScript ' .  s:files.Play . ')" ' .
+        \ ' --preview="echo -e {} | tr ''|'' ''\n'' | sed -e ''s/^ //g'' | tail -r " ' .
+        \ ' --preview-window down:4:wrap' .
+        \ ' --bind "?:toggle-preview"'
+    \ })
+endfunction
+
+" \ 'source':  'osascript -l JavaScript ' . s:files.Search .  ' ' . l:args,
