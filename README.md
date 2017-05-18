@@ -1,28 +1,24 @@
 # itunes.vim
-**Fuzzy search and play iTunes tracks from VIM**
+**Fuzzy search and play iTunes tracks from VIM. You have no idea what gems are hidden in your Music Library**
 
 Install and try for yourself:
 
 ** I have just changed internal logic of the plugin. It works OK but I need a day to update README.**
 
 
-* Search tracks in your Library on your Mac ```:Tunes ```
+* Search tracks in Library on your Mac ```:Tunes ```
 
 * Search through single playlist ```:Tunes Women who know how to sing ```
 
 * Use only part of playlist name ```:Tunes Women who ```
 
-* Include tracks that are not downloaded to your Mac (Apple Music) ```:Tunes Online Women who know ```
-
-* Same as ```:Tunes``` - ```:Tunes Library``` or ```:Tunes Offline Library```
-
-* Everything in your collection ```:Tunes Online```
+* Same as ```:Tunes``` - ```:Tunes Library``` 
 
 
 ## Installation
 
 
-* You will need[^6] [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. 
+* You will need [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. [^6] 
 
 * Read through [fzf.vim](https://github.com/junegunn/fzf.vim) and [fzf](https://github.com/junegunn/fzf) and configure fzf options to your taste. It helps a lot.
 
@@ -55,17 +51,15 @@ See for yourself. There are three stages.
 
 Without any parameters Tunes searches your entire Library (or however it is called in your locale) but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them).
 
-If you add a phrase after ```Tunes``` this plugin searches for playlists that contain that phrase (it doesn't need to be whole playlist title)
+If you insists on getting also on-line tracks every time just add to your .vimrc.
 
-If you preced search phrase with word ```Online``` plugin will search also for subscribed tracks (in Apple parlance) - tracks that are in your playlists but haven't been downloaded to your Mac. 
+```let g:itunes_online = 1```
 
-Mind however that in my modest music collection there is currently 700 odd local tracks and 15 500 tracks altogether. Grabbing on-line tracks is heavy and this is blocking plugin. [^1] [^2]
+You can also toggle Online/Offline mode with ```TunesOnline``` command.
 
-If you still insists on getting on-line tracks every time just add to your .vimrc.
+Mind however that grabbing also on-line tracks (entire collection) is heavy and this is blocking plugin. Try narrowing search. Otherwise you want enjoy using this plugin. [^1] [^2]
 
-```let g:itunes_online = 1``` 
-
-Or test [my fork of Thrasher plugin](https://github.com/chew-z/thrasher) which is grabbing tracks async.
+Test [my fork of Thrasher plugin](https://github.com/chew-z/thrasher) which is grabbing tracks async and remembering Library. Results are shown in instant..
 
 2) Fuzzy search through songs
 
@@ -80,15 +74,15 @@ Try, this is cool, fzf is great tool.
 
 You can toggle preview window with '?'. Or clear your search phrase with Ctrl-U (like in terminal).
 
-If more then one playlist matched your ```Tunes ``` search you can have multiple results (the track is part of more then one playlist).
+If more then one playlist matches your ```:Tunes ``` search you could have doubled/multiplied results (if the track belongs to more then one playlist). I think it is cool feature as I can finally locate where my tracks got lost.
 
 3) Press Enter to select and play track.
 
-Plugin plays selected track in context of choosen playlist. Play queue is filled with playlist and we start playing from selected tracks. It clears what has been in iTunes queue before.
+Plugin now plays selected track in a context of choosen playlist. Play queue is filled with playlist and we start playing from selected tracks. It clears what has been in iTunes queue before.
 
 4) Repeat 2) and 3) as long as you wish.
 
-5) Press Escape to exit fzf and **do something productive in VIM**.
+5) Press Escape to exit fzf window and **do something productive in VIM**.
 
 
 ## Why is it cool?
@@ -140,7 +134,7 @@ command! -nargs=* Tunes call fzf#run({
 ## Why use VIM just to play single track in iTunes?
 
 
-You are right. Just add following alias to your .zshrc or whatever shell you use [zsh tested].
+You are right. Just add following function to your .zshrc or whatever shell you use [zsh tested].
 
 ```
 tunes() {
@@ -171,6 +165,10 @@ Restart your Terminal/iTerm and type ```tunes```
 Just right now internet slowed down to [EDGE (check in Wikipedia if you are too young to know what it is)](https://en.wikipedia.org/wiki/Enhanced_Data_Rates_for_GSM_Evolution) - cause of rain and heavy wind during the night probably. 
 
 Even pushing commits is hard. Hence the Offline option is default. 
+
+I am iritated every time when I click on a track and nothing happens because online track cannot be downloaded.
+
+But on the other hand I can get excellent 4G if I drive 5 km to other beach. And generous package (like 20GB 4G and 20 GB at night) for a few $.
 
 [^4]: fzf has multiline select feature so we can create ad hoc playlists and play queues. I am thinking about it.
 

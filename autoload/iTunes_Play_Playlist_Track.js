@@ -29,15 +29,18 @@ function run(argv) {
         let tracks = playlist.tracks();
         if (verbose) { tracks.forEach(t => { console.log(t.id(), t.name()) } ) } 
         
+        itunes.mute = true;
+        playlist.reveal();
         playlist.play();
 
-        if ( argv.length > 1) { 
+        if ( argv.length > 1) {
             let track = tracks.find(t => { return t.name() == argv[1] } );
             if (verbose) { console.log('Playing: ', track.id(), track.name()) } 
             
             //playlist.stop();
-            itunes.play(track);
+            track.play();
         }
+        itunes.mute = false;
     } catch(e) { 
         console.log(e)
         $.exit(2)

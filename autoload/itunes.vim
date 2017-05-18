@@ -24,6 +24,7 @@ if !exists('g:itunes_online')
     let g:itunes_online = 0
 endif
 
+<<<<<<< HEAD
 if !exists('g:itunes_verbose')
     let g:itunes_verbose = 0
 endif
@@ -152,6 +153,16 @@ let s:tracks = []
 let s:online = g:itunes_online
 
 " FZF sink function
+=======
+let s:jxa_folder = expand('<sfile>:p:h')
+let s:jxa = {
+\ 'Play':       s:jxa_folder . '/iTunes_Play_Track.scpt',
+\ 'Search':     s:jxa_folder . '/iTunes_Search_fzf.scpt'
+\ }
+<<<<<<< HEAD
+>>>>>>> Removed debbuging echom
+=======
+>>>>>>> Removed some debugging verbose noise
 
 function! s:handler(line)
     let l:track = split(a:line, ' | ')
@@ -189,10 +200,12 @@ function! itunes#search_and_play(args)
         \. ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/'' | xargs osascript -l JavaScript ' .  s:files.Play . ')" ' .
         \ ' --preview="echo -e {} | tr ''|'' ''\n'' | sed -e ''s/^ //g'' | tail -r " ' .
         \ ' --preview-window down:4:wrap' .
-        \ ' --bind "?:toggle-preview"'
+        \ ' --bind "?:toggle-preview"' .
+        \ ' -i '
     \ })
 endfunction
 
+<<<<<<< HEAD
 function! itunes#refreshLibrary()
     let l:jxa_path = s:files.Search2
     if g:itunes_online
@@ -220,10 +233,15 @@ function! itunes#toggleOnline()
 " Toggle On-line and refresh List Cache
 	if g:itunes_verbose | echom 'Online' g:itunes_online | endif
 	if g:itunes_online
+=======
+function! itunes#toggle_online()
+    if g:itunes_online
+>>>>>>> Added TunesOnline command
         let g:itunes_online = 0
     else
         let g:itunes_online = 1
     endif
+<<<<<<< HEAD
     call itunes#refreshLibrary()
 	if g:itunes_verbose | echom 'Online' g:itunes_online | endif
 endfunction
@@ -232,3 +250,6 @@ function! itunes#list()
 	call s:bufferFromCache()
 endfunction
 
+=======
+endfunction
+>>>>>>> Added TunesOnline command
