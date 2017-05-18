@@ -3,14 +3,9 @@
 
 Install and try for yourself:
 
-<<<<<<< HEAD
 ** I have just changed internal logic of the plugin. It works OK but I need a day to update README.**
 
 
-=======
-![itunes.vim GIF](gif/itunes.gif)
-
->>>>>>> 0bca3d3599a8b31e344eaf4d97f82b3310cfdea0
 * Search tracks in Library on your Mac ```:Tunes ```
 
 * Search through single playlist ```:Tunes Women who know how to sing ```
@@ -57,7 +52,6 @@ See for yourself. There are three stages.
 Without any parameters Tunes searches your entire Library (or however it is called in your locale) but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them).
 
 If you insists on getting also on-line tracks every time just add to your .vimrc.
-<<<<<<< HEAD
 
 ```let g:itunes_online = 1```
 
@@ -65,15 +59,6 @@ You can also toggle Online/Offline mode with ```TunesOnline``` command.
 
 Mind however that grabbing also on-line tracks (entire collection) is heavy and this is blocking plugin. Try narrowing search. Otherwise you want enjoy using this plugin. [^1] [^2]
 
-=======
-
-```let g:itunes_online = 1```
-
-You can also toggle Online/Offline mode with ```TunesOnline``` command.
-
-Mind however that grabbing also on-line tracks (entire collection) is heavy and this is blocking plugin. Try narrowing search. Otherwise you want enjoy using this plugin. [^1] [^2]
-
->>>>>>> 0bca3d3599a8b31e344eaf4d97f82b3310cfdea0
 Test [my fork of Thrasher plugin](https://github.com/chew-z/thrasher) which is grabbing tracks async and remembering Library. Results are shown in instant..
 
 2) Fuzzy search through songs
