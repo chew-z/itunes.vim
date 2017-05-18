@@ -93,7 +93,7 @@ endfunction
 
 " Local functions
 
-function! s:transformCache(cache)
+function! s:bufferFromCache(cache)
 	let currentBuf = bufnr('%')
 	let g:iTunesBufNum = bufnr('itunes_cache', 1)
 	let l:tracks = a:cache
@@ -102,7 +102,6 @@ function! s:transformCache(cache)
         for l:t in l:tracks
             let l:line = join([l:t.collection, l:t.artist, l:t.album, l:t.name], ' | ')
             let l:res = append(l:i, l:line)
-            let s:tracks= add(s:tracks, l:line)
             let l:i += 1
         endfor
     endif
@@ -110,7 +109,17 @@ function! s:transformCache(cache)
     " exec 'b ' . g:iTunesBufNum
 endfunction 
 
-
+function! s:transformCache(cache)
+	let l:tracks = a:cache
+    if !empty(l:tracks)
+        let l:i = 1
+        for l:t in l:tracks
+            let l:line = join([l:t.collection, l:t.artist, l:t.album, l:t.name], ' | ')
+            let s:tracks= add(s:tracks, l:line)
+            let l:i += 1
+        endfor
+    endif
+endfunction 
 
 " FZF sink function
 
@@ -135,24 +144,32 @@ function! itunes#refresh()
 endfunction
 
 function! itunes#transform()
-    let s:cache = s:restoreVariable(s:files.Cache)
+" from JSON to VIM list with lines and '|' separators
+    if filereadable(s:files.Cache)
+        let s:cache = s:restoreVariable(s:files.Cache)
+    else
+        call itunes#refresh()
+        return 1
+    endif
     call s:transformCache(s:cache)
+    " call itunes#search_and_play('Dummy')
 endfunction
 
 function! itunes#search_and_play(args)
     " restore Music Library form disk file
-    if filereadable(s:files.Cache) | let s:cache = s:restoreVariable(s:files.Cache) | endif
-    call itunes#transform()
-    if empty(s:cache) && exists('g:itunes_refreshLibrary')
-        echom 'iTunes Library Cache empty - refreshing'
-        " TODO exit
+    " if filereadable(s:files.Cache) | let s:cache = s:restoreVariable(s:files.Cache) | endif 
+    if empty(s:tracks)
+        if exists('g:itunes_refreshLibrary')
+            echom 'iTunes Library Cache is refreshing'
+            return 1
+        else
+            echom 'Let me get Library first '
+            call itunes#transform()
+            return 1
+        endif
     endif
-
-    " if g:itunes_online
-    "     let l:args = 'Online ' . a:args
-    " else
-    "     let l:args = a:args
-    " endif
+"   TODO - subquery from args ? live refresh ? 
+"   TODO - search mode <all><track name><playlist name><track album> ?
     call fzf#run({
     \ 'source': s:tracks,
     \ 'sink':   function('s:handler'),
