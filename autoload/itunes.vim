@@ -143,7 +143,6 @@ if filereadable(s:files.Cache)
 	let s:cache = s:restoreVariable(s:files.Cache)
 else
 	let s:cache = []
-	call itunes#refreshLibrary()
 endif
 " s:tracks stores transformed s:cache for feeding fzf
 " TODO - it could also filtered with initial query
@@ -172,7 +171,7 @@ function! itunes#search_and_play(args)
             echom 'iTunes Library Cache is refreshing'
             return 1
         else
-            echom 'Let me get Library first '
+            echom 'Let me get iTunes Library first '
             call itunes#refreshLibrary()
             return 1
         endif
