@@ -3,7 +3,7 @@
 
 Install and try for yourself:
 
-** I have just changed internal logic of the plugin. It works OK but I need a day to update README.**
+**I have just changed internal logic of the plugin. It works OK now with asynchronous loading of iTunes Library but I need a day to update README. And also to step back and comprehend this logic.**
 
 
 * Search tracks in Library on your Mac ```:Tunes ```
