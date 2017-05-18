@@ -160,22 +160,32 @@ let s:jxa = {
 \ 'Search':     s:jxa_folder . '/iTunes_Search_fzf.scpt'
 \ }
 <<<<<<< HEAD
+<<<<<<< HEAD
 >>>>>>> Removed debbuging echom
 =======
 >>>>>>> Removed some debugging verbose noise
+=======
+>>>>>>> 0bca3d3599a8b31e344eaf4d97f82b3310cfdea0
 
 function! s:handler(line)
     let l:track = split(a:line, ' | ')
     let l:title = l:track[len(l:track)-1]
     let l:playlist = substitute(l:track[0], ' $', '', '')
     " This is never called unless we re-bind Enter in fzf
+<<<<<<< HEAD
     let cmd = 'osascript -l JavaScript ' . s:files.Play . shellescape(l:playlist) . ' ' . shellescape(l:title)
     call system(cmd)
+=======
+    let l:cmd = 'osascript -l JavaScript ' . s:jxa.Play . shellescape(l:playlist) . ' ' . shellescape(l:title)
+    call system(l:cmd)
+    "call system('osascript -l JavaScript ' . s:jxa.Play . l:title)
+>>>>>>> 0bca3d3599a8b31e344eaf4d97f82b3310cfdea0
 endfunction
 
 " Exposed global methods
 
 function! itunes#search_and_play(args)
+<<<<<<< HEAD
     " restore Music Library form disk file
     if filereadable(s:files.Cache) | let s:cache = s:restoreVariable(s:files.Cache) | endif 
     if empty(s:cache)
@@ -187,6 +197,12 @@ function! itunes#search_and_play(args)
             call itunes#refreshLibrary()
             return 1
         endif
+=======
+    if g:itunes_online
+        let l:args = 'Online ' . a:args
+    else
+        let l:args = 'Offline ' . a:args
+>>>>>>> 0bca3d3599a8b31e344eaf4d97f82b3310cfdea0
     endif
 	let l:online = 'Offline'
 	if s:online | let l:online = 'Online' | endif
@@ -205,6 +221,7 @@ function! itunes#search_and_play(args)
     \ })
 endfunction
 
+<<<<<<< HEAD
 <<<<<<< HEAD
 function! itunes#refreshLibrary()
     let l:jxa_path = s:files.Search2
@@ -237,10 +254,15 @@ function! itunes#toggleOnline()
 function! itunes#toggle_online()
     if g:itunes_online
 >>>>>>> Added TunesOnline command
+=======
+function! itunes#toggle_online()
+    if g:itunes_online
+>>>>>>> 0bca3d3599a8b31e344eaf4d97f82b3310cfdea0
         let g:itunes_online = 0
     else
         let g:itunes_online = 1
     endif
+<<<<<<< HEAD
 <<<<<<< HEAD
     call itunes#refreshLibrary()
 	if g:itunes_verbose | echom 'Online' g:itunes_online | endif
@@ -253,3 +275,6 @@ endfunction
 =======
 endfunction
 >>>>>>> Added TunesOnline command
+=======
+endfunction
+>>>>>>> 0bca3d3599a8b31e344eaf4d97f82b3310cfdea0
