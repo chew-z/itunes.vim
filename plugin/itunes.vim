@@ -7,4 +7,6 @@ if exists('g:loaded_itunes')
 endif
 let g:loaded_itunes = 1
 
-command! -nargs=* Tunes call itunes#search_and_play(<q-args>)
+command! -nargs=* Tunes             call itunes#search_and_play(<q-args>)
+command! -nargs=0 TunesOnline       call itunes#toggleOnline()
+command! -nargs=0 TunesRefresh      call itunes#refreshLibrary()

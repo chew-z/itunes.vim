@@ -3,6 +3,8 @@
 
 Install and try for yourself:
 
+** I have just changed internal logic of the plugin. It works OK but I need a day to update README.**
+
 
 * Search tracks in your Library on your Mac ```:Tunes ```
 
