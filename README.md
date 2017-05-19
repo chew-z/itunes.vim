@@ -3,7 +3,7 @@
 
 Install and try for yourself:
 
-
+![Live demo of itunes.vim](gif/itunes.gif)
 
 * Search tracks in Library on your Mac ```:Tunes ```
 
