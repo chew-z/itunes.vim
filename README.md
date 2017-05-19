@@ -11,7 +11,7 @@ Install and try for yourself:
 
 * Use only part of playlist name ```:Tunes Women who ```
 
-Fuzzy search through tracks and playlist.
+Fuzzy search through tracks and playlists.
 
 Press Enter to play a playlist starting from selected track. Esc to quit.
 
@@ -34,9 +34,9 @@ and run
 
 ```:PlugInstall```
 
-This plugin includes compiled Javascript scripts - JXA [(Javascript for Automation)](https://gist.github.com/JMichaelTX/d29adaa18088572ce6d4) - that glue to iTunes. Trust me, there is no malcious code inside.
+This plugin includes compiled Javascript scripts - JXA [(Javascript for Automation)](https://gist.github.com/JMichaelTX/d29adaa18088572ce6d4) - that glue to iTunes. Trust me, there is no malicious code inside.
 
-Because you should  genrally not trust people on the internet you can review the code (in .js files) and compile for yourself.
+Because you should  generally not trust people on the internet you can review the code (in .js files) and compile for yourself.
 
 ```
 osacompile -l JavaScript -o iTunes_Search2_fzf.scpt iTunes_Search2_fzf.js
@@ -60,7 +60,7 @@ You can also toggle Online/Offline mode with ```TunesOnline``` command.
 
 In large collection gathering all tracks takes a minute or two. It is done in the background with async script. You should see a message *'iTunes Library refreshed'* when it's done. It will only happen first time you start the plugin.
 
-Your tracks and playlists are cached and during subsequent runs you should see results in an instant. Cache is persistent and stays between VIM restarts. All subsequnt queries are against a cache hence they are quick.
+Your tracks and playlists are cached and during subsequent runs you should see results in an instant. Cache is persistent and stays between VIM restarts. All subsequent queries are against a cache hence they are quick.
 
 If you add new tracks and playlists you may want to refresh cache of iTunes Library. ```:TunesRefresh``` does just that. Again refreshing takes a minute and you may not see results right away. 
 
@@ -95,7 +95,7 @@ If more then one playlist matches your ```:Tunes ``` search you could have doubl
 
 3) **Press Enter to select and play track**
 
-Plugin plays selected track in a context of choosen playlist. Play queue is filled with playlist and we start playing from selected tracks. It clears what has been in iTunes queue before.
+Plugin plays selected track in a context of chosen playlist. Play queue is filled with playlist and we start playing from selected tracks. It clears what has been in iTunes queue before.
 
 4) **Repeat 2) and 3) as long as you wish**
 
@@ -124,9 +124,9 @@ and one global variable
 
 * Fuzzy searching through iTunes Library with fzf is cool
 
-* Gathers iTunes Library async (not blocking your work in VIM)
+* Collecting iTunes Library async (not blocking your work in VIM)
 
-* iTunes Library is cached persistent so you are geting instatnt results also after restarting VIM
+* iTunes Library is cached persistent so you are getting instant results also after restarting VIM
 
 * Using JavaScript (JXA) as glue to iTunes instead of walking disaster cum enigma that AppleScript is
 
@@ -167,7 +167,7 @@ command! -nargs=* Tunes call fzf#run({
     \ }
 ```
 
-But mind that there is no aync loading and catching of iTunes Library here.
+But mind that there is no async loading and catching of iTunes Library here.
 
 
 ## Why use VIM just to play single track in iTunes?
@@ -177,7 +177,7 @@ You are right. Just add following function to your .zshrc or whatever shell you 
 
 ```
 tunes() {
-# usage: tunes [Online] [Partial name of playlist] or just tunes. Enter to play, Esc ro exit.
+# usage: tunes [Online] [Partial name of playlist] or just tunes. Enter to play, Esc to exit.
     local jxa_dir=''WHERE DID YOU PUT JXA FILES?'
     osascript -l JavaScript $jxa_dir/iTunes_Search_fzf.scpt $@ |\
     fzf \
@@ -214,16 +214,16 @@ Just right now internet slowed down to [EDGE (check in Wikipedia if you are too 
 
 Even pushing commits is hard. Hence the Offline option is default. 
 
-I am iritated every time when I click on a track and nothing happens because online track cannot be downloaded.
+I am irritated every time when I click on a track and nothing happens because online track cannot be downloaded.
 
 But on the other hand I can get excellent 4G if I drive 5 km to other beach. And generous package (like 20GB 4G and 20 GB at night) for a few $.
 
-[^2]: Many-to-many realtionsship. This is why refreshing cache takes a while.
+[^2]: Many-to-many relationship. This is why refreshing cache takes a while.
 
-[^3]: There is only one aditional command ```:TunesList``` which fills VIM bufffer with your Library (or it's subset if you pass a search query just like in ```:Tunes```.
+[^3]: There is only one additional command ```:TunesList``` which fills VIM buffer with your Library (or it's subset if you pass a search query just like in ```:Tunes```.
 
-[^4]: fzf has multiline select feature so we can create ad hoc playlists and play queues. I am thinking about it.
+[^4]: fzf has multi line select feature so we can create ad hoc playlists and play queues. I am thinking about it.
 
-[^5]: This is using ```--bind=execute-silent``` a bit esotheric (and damm difficult to debug) feature of fzf
+[^5]: This is using ```--bind=execute-silent``` a bit esoteric (and dam difficult to debug) feature of fzf
 
 [^6]: Did I mention it works only on Mac?
