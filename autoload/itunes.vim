@@ -48,11 +48,11 @@ function! s:restoreVariable(file)
 endfunction
 
 function! s:bufferFromCache(query)
-	let l:tracks = s:cache
+    let l:tracks = s:cache
     " creat scratch buffer
     new
     setlocal nobuflisted buftype=nofile bufhidden=wipe noswapfile
-    
+
     if !empty(l:tracks)
         if empty(a:query)
             if g:itunes_verbose | echom 'Empty query in s:bufferFromCache' | endif
@@ -64,14 +64,14 @@ function! s:bufferFromCache(query)
             " filter matching playlists
             let l:matchnr = 0
             for l:t in l:tracks
-				if l:t.collection =~? a:query
+                if l:t.collection =~? a:query
                     let l:matchnr += 1
-					let l:line = join([l:t.collection, l:t.artist, l:t.album, l:t.name], ' | ')
-					let l:res = append('$', l:line)
+                    let l:line = join([l:t.collection, l:t.artist, l:t.album, l:t.name], ' | ')
+                    let l:res = append('$', l:line)
                     " if g:itunes_verbose | echom l:res ':' a:query '<->' l:t.collection | endif
-				endif
-			endfor
-			if g:itunes_verbose | echom 'Found' l:matchnr 'tracks matching' a:query | endif
+                endif
+            endfor
+            if g:itunes_verbose | echom 'Found' l:matchnr 'tracks matching' a:query | endif
         endif
     endif
     " move first (empty) line to black register
@@ -80,8 +80,8 @@ endfunction
 
 function! s:refreshTracks(query)
     let s:tracks = []
-	let l:tracks = s:cache
-    
+    let l:tracks = s:cache
+
     if !empty(l:tracks)
         if empty(a:query)
             for l:t in l:tracks
@@ -91,13 +91,13 @@ function! s:refreshTracks(query)
             endfor
         else
             for l:t in l:tracks
-				if l:t.collection =~? a:query
-					" transform to format expected by fzf
-					let l:line = join([l:t.collection, l:t.artist, l:t.album, l:t.name], ' | ')
-					let s:tracks= add(s:tracks, l:line)
-				endif
-			endfor
-			if g:itunes_verbose | echom 'Found' len(s:tracks) 'tracks matching' a:query | endif
+                if l:t.collection =~? a:query
+                    " transform to format expected by fzf
+                    let l:line = join([l:t.collection, l:t.artist, l:t.album, l:t.name], ' | ')
+                    let s:tracks= add(s:tracks, l:line)
+                endif
+            endfor
+            if g:itunes_verbose | echom 'Found' len(s:tracks) 'tracks matching' a:query | endif
         endif
     endif
 
@@ -113,8 +113,8 @@ function! RefreshLibrary_JobEnd(channel)
     call s:saveVariable(s:cache, s:files.Cache)
     if filereadable(s:files.Cache) | echom 'iTunes Library refreshed' | endif
     unlet g:itunes_refreshLibrary
-	if g:itunes_verbose | echom 'RefreshLibrary job finished with' len(s:cache) 'items' | endif 
-	let s:online = g:itunes_online
+    if g:itunes_verbose | echom 'RefreshLibrary job finished with' len(s:cache) 'items' | endif 
+    let s:online = g:itunes_online
 endfunction
 
 function! s:refreshLibrary(jxa_exec, mode)
@@ -123,11 +123,11 @@ function! s:refreshLibrary(jxa_exec, mode)
     else
         let g:itunes_refreshLibrary = tempname()
         let l:cmd = ['osascript', '-l', 'JavaScript',  a:jxa_exec, a:mode]
-        
+
         if g:itunes_verbose | echom string(l:cmd) | endif
         if g:itunes_verbose | echom string(g:itunes_refreshLibrary) | endif
         if g:itunes_verbose | echom 'Refreshing iTunes Library in background' | endif
-        
+
         let l:job = job_start(l:cmd, {'close_cb': 'RefreshLibrary_JobEnd', 'out_io': 'file', 'out_name': g:itunes_refreshLibrary})
     endif
 endfunction
@@ -136,11 +136,11 @@ endfunction
 
 let s:folder = expand('<sfile>:p:h')
 let s:files = {
-\ 'Play':       s:folder .  '/iTunes_Play_Playlist_Track.scpt',
-\ 'Search':     s:folder .  '/iTunes_Search_fzf.scpt',
-\ 'Search2':    s:folder .  '/iTunes_Search2_fzf.scpt',
-\ 'Cache':      s:folder .  '/iTunes_Library_Cache.txt'
-\ }
+            \ 'Play':       s:folder .  '/iTunes_Play_Playlist_Track.scpt',
+            \ 'Search':     s:folder .  '/iTunes_Search_fzf.scpt',
+            \ 'Search2':    s:folder .  '/iTunes_Search2_fzf.scpt',
+            \ 'Cache':      s:folder .  '/iTunes_Library_Cache.txt'
+            \ }
 if g:itunes_verbose
     echom s:folder
     echom s:files.Play
@@ -150,9 +150,9 @@ endif
 
 " s:cache stores copy of iTunes_Library_Cache.txt
 if filereadable(s:files.Cache)
-	let s:cache = s:restoreVariable(s:files.Cache)
+    let s:cache = s:restoreVariable(s:files.Cache)
 else
-	let s:cache = []
+    let s:cache = []
 endif
 " s:tracks stores transformed s:cache for feeding fzf
 let s:tracks = []
@@ -185,22 +185,22 @@ function! itunes#search_and_play(args)
             return 1
         endif
     endif
-	let l:online = 'Offline'
-	if s:online | let l:online = 'Online' | endif
+    let l:online = 'Offline'
+    if s:online | let l:online = 'Online' | endif
     call itunes#transform(a:args)
-"   TODO - live refresh in fzf?
-"   TODO - toggle search mode <all><track name><playlist name><track album> ?
-"   TODO - play track by id rather then name
+    "   TODO - live refresh in fzf?
+    "   TODO - toggle search mode <all><track name><playlist name><track album> ?
+    "   TODO - play track by id rather then name
     call fzf#run({
-    \ 'source': s:tracks,
-    \ 'sink':   function('s:handler'),
-    \ 'options': '-i' .
-        \ ' --header "Enter to play track Esc to exit ? toggles preview ['  . l:online . ']"' .
-        \ ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/'' | xargs osascript -l JavaScript ' .  s:files.Play . ')" ' .
-        \ ' --preview="echo -e {} | tr ''|'' ''\n'' | sed -e ''s/^ //g'' | tail -r " ' .
-        \ ' --preview-window down:4:wrap' .
-        \ ' --bind "?:toggle-preview"'
-    \ })
+                \ 'source': s:tracks,
+                \ 'sink':   function('s:handler'),
+                \ 'options': '-i' .
+                \ ' --header "Enter to play track Esc to exit ? toggles preview ['  . l:online . ']"' .
+                \ ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/'' | xargs osascript -l JavaScript ' .  s:files.Play . ')" ' .
+                \ ' --preview="echo -e {} | tr ''|'' ''\n'' | sed -e ''s/^ //g'' | tail -r " ' .
+                \ ' --preview-window down:4:wrap' .
+                \ ' --bind "?:toggle-preview"'
+                \ })
 endfunction
 
 function! itunes#refreshLibrary()
@@ -213,8 +213,8 @@ function! itunes#refreshLibrary()
 endfunction
 
 function! itunes#transform(query)
-" This isn't the best name 
-" from JSON to VIM list with lines and '|' separators
+    " This isn't the best name 
+    " from JSON to VIM list with lines and '|' separators
     if empty(s:cache)
         if filereadable(s:files.Cache)
             let s:cache = s:restoreVariable(s:files.Cache)
@@ -228,19 +228,19 @@ function! itunes#transform(query)
 endfunction
 
 function! itunes#toggleOnline()
-" Toggle On-line and refresh List Cache
-	if g:itunes_verbose | echom 'Online' g:itunes_online | endif
-	if g:itunes_online
+    " Toggle On-line and refresh List Cache
+    if g:itunes_verbose | echom 'Online' g:itunes_online | endif
+    if g:itunes_online
         let g:itunes_online = 0
     else
         let g:itunes_online = 1
     endif
     call itunes#refreshLibrary()
-	if g:itunes_verbose | echom 'Online' g:itunes_online | endif
+    if g:itunes_verbose | echom 'Online' g:itunes_online | endif
 endfunction
 
 function! itunes#list(args)
-	if g:itunes_verbose | echom 'itunes#list args' a:args | endif
+    if g:itunes_verbose | echom 'itunes#list args' a:args | endif
     call s:bufferFromCache(a:args)
 endfunction
 
