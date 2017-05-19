@@ -48,7 +48,7 @@ osacompile -l JavaScript -o iTunes_Play_Tracks.scpt iTunes_Play_Tracks.js
 
 See for yourself. There are three stages. 
 
-1) Enter ```:Tunes``` command in VIM to search for playlist(s). 
+1) **Enter ```:Tunes``` command in VIM to search for playlist(s)**
 
 Without any parameters Tunes searches your entire Library (or however it is called in your locale) but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them). [^1]
 
@@ -58,11 +58,11 @@ If you insists on getting also on-line tracks every time just add to your .vimrc
 
 You can also toggle Online/Offline mode with ```TunesOnline``` command.
 
-In large collection gathering all tracks takes a minute or two. It is done in the background with async script. You should see a message 'iTunes Library refreshed' when it's done. It will only happen first time you start the plugin.
+In large collection gathering all tracks takes a minute or two. It is done in the background with async script. You should see a message *'iTunes Library refreshed'* when it's done. It will only happen first time you start the plugin.
 
 Your tracks and playlists are cached and during subsequent runs you should see results in an instant. Cache is persistent and stays between VIM restarts. All subsequnt queries are against a cache hence they are quick.
 
-If you add new tracks and playslist you may want to refresh cache of your iTunes Library. ```:TunesRefresh``` does just that. Again refreshing takes a minute and you may not see refreshed results right away. 
+If you add new tracks and playlists you may want to refresh cache of iTunes Library. ```:TunesRefresh``` does just that. Again refreshing takes a minute and you may not see results right away. 
 
 Toggling Online/Offline with ```TunesOnline```  also refreshes cache.[^3]
 
@@ -78,7 +78,7 @@ You can narrow down initial results providing name of playlist or at least parti
 
 ```
 
-2) Fuzzy search through songs
+2) **Fuzzy search through songs**
 
 fzf is searching through
 
@@ -93,13 +93,13 @@ You can toggle preview window with '?'. Or clear your search phrase with Ctrl-U 
 
 If more then one playlist matches your ```:Tunes ``` search you could have doubled/multiplied results (if the track belongs to more then one playlist) [^2]. I think it is cool feature as I can finally locate where my tracks got lost.
 
-3) Press Enter to select and play track.
+3) **Press Enter to select and play track**
 
 Plugin plays selected track in a context of choosen playlist. Play queue is filled with playlist and we start playing from selected tracks. It clears what has been in iTunes queue before.
 
-4) Repeat 2) and 3) as long as you wish.
+4) **Repeat 2) and 3) as long as you wish**
 
-5) Press Escape to exit fzf window and **do something productive in VIM**.
+5) **Press Escape to exit fzf window and do something productive in VIM**.
 
 
 ## Commands
@@ -193,6 +193,14 @@ tunes() {
 ```
 
 Restart your Terminal/iTerm and type ```tunes```
+
+Or try from commandline
+
+``` vim -c 'Tunes' ```
+
+You can add an alias
+
+``alias tunes="vim -c 'Tunes'"
 
 
 ## Footnotes.
