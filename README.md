@@ -19,7 +19,7 @@ Press Enter to play a playlist starting from selected track. Esc to quit.
 ## Installation
 
 
-* You will need [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. [6] 
+* You will need [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. <sup>[6](#myfootnote6)</sup>
 
 * Read through [fzf.vim](https://github.com/junegunn/fzf.vim) and [fzf](https://github.com/junegunn/fzf) and configure fzf options to your taste. It helps a lot.
 
@@ -57,7 +57,7 @@ Your tracks and playlists are cached and during subsequent runs you should see r
 
 If you add new tracks and playlists you may want to refresh cache of iTunes Library. ```:TunesRefresh``` does just that. Again refreshing takes a minute and you may not see results right away. 
 
-Toggling Online/Offline with ```TunesOnline```  also refreshes cache.[3]
+Toggling Online/Offline with ```TunesOnline```  also refreshes cache.<sup>[3](#myfootnote3)</sup>
 
 You can narrow down initial results providing name of playlist or at least partial name.
 
@@ -84,7 +84,7 @@ Try, this is cool, fzf is great tool.
 
 You can toggle preview window with '?'. Or clear your search phrase with Ctrl-U (like in terminal).
 
-If more then one playlist matches your ```:Tunes ``` search you could have doubled/multiplied results (if the track belongs to more then one playlist) [2]. I think it is cool feature as I can finally locate where my tracks got lost.
+If more then one playlist matches your ```:Tunes ``` search you could have doubled/multiplied results (if the track belongs to more then one playlist) <sup>[2](#myfootnote2)</sup>. It is cool feature as I can finally locate where my tracks got lost.
 
 3) **Press Enter to select and play track**
 
@@ -132,32 +132,32 @@ Fair enough.
 Just add to your .vimrc
 
 ```vim
-let s:jxa_folder = 'WHERE DID YOU PUT JXA FILES?'
+  let s:jxa_folder = 'WHERE DID YOU PUT JXA FILES?'
 
-function! s:itunes_handler(line)
-    let l:track = split(a:line, ' | ')
-    " call append(line('$'), a:line)
-    " normal! ^zz
-    let l:title = l:track[len(l:track)-1]
-    let l:playlist = substitute(l:track[0], ' $', '', '')
-    " echom l:playlist
-    " echom join(l:track, ' ')
-    " This is never called unless we re-bind Enter in fzf
-    let cmd = 'osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Play_Playlist_Track.scpt ' . shellescape(l:playlist) . ' ' . shellescape(l:title)
-    echom cmd
-    let l:resp = system(cmd)
-    echom l:resp
-endfunction
+  function! s:itunes_handler(line)
+      let l:track = split(a:line, ' | ')
+      " call append(line('$'), a:line)
+      " normal! ^zz
+      let l:title = l:track[len(l:track)-1]
+      let l:playlist = substitute(l:track[0], ' $', '', '')
+      " echom l:playlist
+      " echom join(l:track, ' ')
+      " This is never called unless we re-bind Enter in fzf
+      let cmd = 'osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Play_Playlist_Track.scpt ' . shellescape(l:playlist) . ' ' . shellescape(l:title)
+      echom cmd
+      let l:resp = system(cmd)
+      echom l:resp
+  endfunction
 
-command! -nargs=* Tunes call fzf#run({
-    \ 'source':  'osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Search_fzf.scpt ' .  <q-args>,
-    \ 'sink':   function('<sid>itunes_handler'),
-    \ 'options': '--header "Enter to play track. Esc to exit."' . 
-    \ ' --preview="echo -e {} | tr ''|'' ''\n'' | gsed -e ''s/^ //g'' | tail -r " ' .
-    \ ' --preview-window down:4:wrap' . 
-    \ ' --bind "?:toggle-preview"' .
-    \ ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/'' | xargs osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Play_Playlist_Track.scpt ' .  ')" '
-    \ }
+  command! -nargs=* Tunes call fzf#run({
+      \ 'source':  'osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Search_fzf.scpt ' .  <q-args>,
+      \ 'sink':   function('<sid>itunes_handler'),
+      \ 'options': '--header "Enter to play track. Esc to exit."' . 
+      \ ' --preview="echo -e {} | tr ''|'' ''\n'' | gsed -e ''s/^ //g'' | tail -r " ' .
+      \ ' --preview-window down:4:wrap' . 
+      \ ' --bind "?:toggle-preview"' .
+      \ ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/'' | xargs osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Play_Playlist_Track.scpt ' .  ')" '
+      \ }
 ```
 
 But mind that there is no async loading and catching of iTunes Library here.
@@ -169,20 +169,20 @@ But mind that there is no async loading and catching of iTunes Library here.
 You are right. Just add following function to your .zshrc or whatever shell you use [zsh tested].
 
 ```zsh
-tunes() {
-# usage: tunes [Online] [Partial name of playlist] or just tunes. Enter to play, Esc to exit.
-    local jxa_dir=''WHERE DID YOU PUT JXA FILES?'
-    osascript -l JavaScript $jxa_dir/iTunes_Search_fzf.scpt $@ |\
-    fzf \
-        --header "Enter to play. Esc to exit. ? toggles preview window." \
-        --bind "enter:execute-silent(echo -n {} | sed -e 's/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/' | xargs osascript -l JavaScript $jxa_dir/iTunes_Play_Playlist_Track.scpt )" \
-        --bind '?:toggle-preview' \
-        --preview "echo -e {} | tr '|' '\n' | sed -e 's/^ //g' | tail -r " \
-        --preview-window down:4:wrap |\
-        sed -e 's/^.*| //g' |\
-# This is never used unless we re-bind Enter. Esc simply quits fzf without any action.
-    xargs osascript -l JavaScript $jxa_dir/iTunes_Play_Playlist_Track.scpt
-}
+  tunes() {
+  # usage: tunes [Online] [Partial name of playlist] or just tunes. Enter to play, Esc to exit.
+      local jxa_dir=''WHERE DID YOU PUT JXA FILES?'
+      osascript -l JavaScript $jxa_dir/iTunes_Search_fzf.scpt $@ |\
+      fzf \
+          --header "Enter to play. Esc to exit. ? toggles preview window." \
+          --bind "enter:execute-silent(echo -n {} | sed -e 's/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/' | xargs osascript -l JavaScript $jxa_dir/iTunes_Play_Playlist_Track.scpt )" \
+          --bind '?:toggle-preview' \
+          --preview "echo -e {} | tr '|' '\n' | sed -e 's/^ //g' | tail -r " \
+          --preview-window down:4:wrap |\
+          sed -e 's/^.*| //g' |\
+  # This is never used unless we re-bind Enter. Esc simply quits fzf without any action.
+      xargs osascript -l JavaScript $jxa_dir/iTunes_Play_Playlist_Track.scpt
+  }
 ```
 
 Restart your Terminal/iTerm and type ```tunes```
@@ -207,12 +207,8 @@ I am irritated every time when I click on a track and nothing happens because on
 
 But on the other hand I can get excellent 4G if I drive 5 km to other beach. And generous package (like 20GB 4G and 20 GB at night) for a few $.
 
-[2]: Many-to-many relationship. This is why refreshing cache takes a while.
+<a name="myfootnote2">2</a>: Many-to-many relationship. This is why refreshing cache takes a while.
 
-[3]: There is only one additional command ```:TunesList``` which fills VIM buffer with your Library (or it's subset if you pass a search query just like in ```:Tunes```.
+<a name="myfootnote3">3</a>: There is only one additional command ```:TunesList``` which fills VIM buffer with your Library (or it's subset if you pass a search query just like in ```:Tunes```.
 
-[4]: fzf has multi line select feature so we can create ad hoc playlists and play queues. I am thinking about it.
-
-[5]: This is using ```--bind=execute-silent``` a bit esoteric (and dam difficult to debug) feature of fzf
-
-[6]: Did I mention it works only on Mac?
+<a name="myfootnote6">6</a>: Did I mention it works only on Mac?
