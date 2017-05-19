@@ -112,18 +112,23 @@ Plugin plays selected track in a context of choosen playlist. Play queue is fill
 
 * ```:TunesList [playlist] ``` - fills buffer with search results
 
-
 and one global variable
 
-* ```let g:itunes_online = 0 [deafault] ``` - set to 1 for Online mode as default.
+* ```let g:itunes_online = 0 [default] ``` - set to 1 for Online mode as default.
 
 
 ## Why is it cool?
 
 
-Searching with fzf is cool. 
+* Play music without leaving VIM. Choose playlist that enhances your focus
 
-Also the plugin is using JXA instead of walking disaster cum enigma that AppleScript is.
+* Fuzzy searching through iTunes Library with fzf is cool
+
+* Gathers iTunes Library async (not blocking your work in VIM)
+
+* iTunes Library is cached persistent so you are geting instatnt results also after restarting VIM
+
+* Using JavaScript (JXA) as glue to iTunes instead of walking disaster cum enigma that AppleScript is
 
 
 ## But I don't need yet another VIM plugin
