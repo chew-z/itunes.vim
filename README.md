@@ -19,20 +19,15 @@ Press Enter to play a playlist starting from selected track. Esc to quit.
 ## Installation
 
 
-* You will need [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. [^6] 
+* You will need [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. [6] 
 
 * Read through [fzf.vim](https://github.com/junegunn/fzf.vim) and [fzf](https://github.com/junegunn/fzf) and configure fzf options to your taste. It helps a lot.
 
 * If you are using MacVim you need a glue connecting fzf and MacVim. But this is up to fzf installation and configuration and not this plugin.
 
-I am using [Vim-Plug](https://github.com/junegunn/vim-plug) and don't know much about other plugin managers. In Vim-Plug just add [in right place] to your .vimrc:
+I am using [Vim-Plug](https://github.com/junegunn/vim-plug) and don't know much about other plugin managers. In Vim-Plug just add [in right place] to your .vimrc ``` Plug 'chew-z/itunes.vim'```
 
-``` Plug 'chew-z/itunes.vim'```
-
-and run
-
-
-```:PlugInstall```
+and run ```:PlugInstall```
 
 This plugin includes compiled Javascript scripts - JXA [(Javascript for Automation)](https://gist.github.com/JMichaelTX/d29adaa18088572ce6d4) - that glue to iTunes. Trust me, there is no malicious code inside.
 
@@ -50,11 +45,9 @@ See for yourself. There are three stages.
 
 1) **Enter ```:Tunes``` command in VIM to search for playlist(s)**
 
-Without any parameters Tunes searches your entire Library (or however it is called in your locale) but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them). [^1]
+Without any parameters Tunes searches your entire Library (or however it is called in your locale) but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them).<sup>[1](#myfootnote1)</sup>
 
-If you insists on getting also on-line tracks every time just add to your .vimrc.
-
-```let g:itunes_online = 1```
+If you insists on getting also on-line tracks every time just add to your .vimrc. ``` let g:itunes_online = 1```
 
 You can also toggle Online/Offline mode with ```TunesOnline``` command.
 
@@ -64,17 +57,17 @@ Your tracks and playlists are cached and during subsequent runs you should see r
 
 If you add new tracks and playlists you may want to refresh cache of iTunes Library. ```:TunesRefresh``` does just that. Again refreshing takes a minute and you may not see results right away. 
 
-Toggling Online/Offline with ```TunesOnline```  also refreshes cache.[^3]
+Toggling Online/Offline with ```TunesOnline```  also refreshes cache.[3]
 
 You can narrow down initial results providing name of playlist or at least partial name.
 
 ```
 
-:Tunes My Favourite Songs
+  :Tunes My Favourite Songs
 
-:Tunes my songs
+  :Tunes my songs
 
-:Tunes favourite
+  :Tunes favourite
 
 ```
 
@@ -82,16 +75,16 @@ You can narrow down initial results providing name of playlist or at least parti
 
 fzf is searching through
 
-- playlist tittle
-- track tittle
-- track album
-- track artist
+  - playlist tittle
+  - track tittle
+  - track album
+  - track artist
 
 Try, this is cool, fzf is great tool.
 
 You can toggle preview window with '?'. Or clear your search phrase with Ctrl-U (like in terminal).
 
-If more then one playlist matches your ```:Tunes ``` search you could have doubled/multiplied results (if the track belongs to more then one playlist) [^2]. I think it is cool feature as I can finally locate where my tracks got lost.
+If more then one playlist matches your ```:Tunes ``` search you could have doubled/multiplied results (if the track belongs to more then one playlist) [2]. I think it is cool feature as I can finally locate where my tracks got lost.
 
 3) **Press Enter to select and play track**
 
@@ -138,7 +131,7 @@ Fair enough.
 
 Just add to your .vimrc
 
-```
+```vim
 let s:jxa_folder = 'WHERE DID YOU PUT JXA FILES?'
 
 function! s:itunes_handler(line)
@@ -175,7 +168,7 @@ But mind that there is no async loading and catching of iTunes Library here.
 
 You are right. Just add following function to your .zshrc or whatever shell you use [zsh tested].
 
-```
+```zsh
 tunes() {
 # usage: tunes [Online] [Partial name of playlist] or just tunes. Enter to play, Esc to exit.
     local jxa_dir=''WHERE DID YOU PUT JXA FILES?'
@@ -194,21 +187,17 @@ tunes() {
 
 Restart your Terminal/iTerm and type ```tunes```
 
-Or try from commandline
+Or try from commandline ``` vim -c 'Tunes' ```
 
-``` vim -c 'Tunes' ```
-
-You can add an alias
-
-``alias tunes="vim -c 'Tunes'"
+You can add an alias ``` alias tunes="vim -c 'Tunes'" ```
 
 
 ## Footnotes.
 
 
-[^0]: How do you create proper footnotes in this weird markdown flavour?
+[0]: How do you create proper footnotes in this weird markdown flavour?
 
-[^1]: This is not First World problem but I am developing this plugin on an island off Sumatra and Internet could be spotty and my mobile package is limited. 
+<a name="myfootnote1">1</a>: This is not First World problem but I am developing this plugin on an island off Sumatra and Internet could be spotty and my mobile package is limited. 
 
 Just right now internet slowed down to [EDGE (check in Wikipedia if you are too young to know what it is)](https://en.wikipedia.org/wiki/Enhanced_Data_Rates_for_GSM_Evolution) - cause of rain and heavy wind during the night probably. 
 
@@ -218,12 +207,12 @@ I am irritated every time when I click on a track and nothing happens because on
 
 But on the other hand I can get excellent 4G if I drive 5 km to other beach. And generous package (like 20GB 4G and 20 GB at night) for a few $.
 
-[^2]: Many-to-many relationship. This is why refreshing cache takes a while.
+[2]: Many-to-many relationship. This is why refreshing cache takes a while.
 
-[^3]: There is only one additional command ```:TunesList``` which fills VIM buffer with your Library (or it's subset if you pass a search query just like in ```:Tunes```.
+[3]: There is only one additional command ```:TunesList``` which fills VIM buffer with your Library (or it's subset if you pass a search query just like in ```:Tunes```.
 
-[^4]: fzf has multi line select feature so we can create ad hoc playlists and play queues. I am thinking about it.
+[4]: fzf has multi line select feature so we can create ad hoc playlists and play queues. I am thinking about it.
 
-[^5]: This is using ```--bind=execute-silent``` a bit esoteric (and dam difficult to debug) feature of fzf
+[5]: This is using ```--bind=execute-silent``` a bit esoteric (and dam difficult to debug) feature of fzf
 
-[^6]: Did I mention it works only on Mac?
+[6]: Did I mention it works only on Mac?
