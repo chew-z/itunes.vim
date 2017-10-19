@@ -23,7 +23,7 @@ Install and try for yourself:
 
 * Read through [fzf.vim](https://github.com/junegunn/fzf.vim) and [fzf](https://github.com/junegunn/fzf) and configure fzf options to your taste. It helps a lot.
 
-* ~~If you are using MacVim you need a glue connecting fzf and MacVim. But this is up to fzf installation and configuration and not this plugin.~~ [Support for fzf inside MacVim](https://github.com/junegunn/fzf.vim/issues/416#issuecomment-327982805) has been recently added by using the new native terminals in Vim 8.
+* ~~If you are using MacVim you need a glue connecting fzf and MacVim. But this is up to fzf installation and configuration and not this plugin.~~ [Support for fzf inside MacVim](https://github.com/junegunn/fzf.vim/issues/416#issuecomment-327982805) has been recently added by using the new native terminals in Vim 8. However you might see some strange artifacts from time to time.
 
 I am using [Vim-Plug](https://github.com/junegunn/vim-plug) and don't know much about other plugin managers. In Vim-Plug just add [in right place] to your .vimrc ``` Plug 'chew-z/itunes.vim'```
 
