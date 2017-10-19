@@ -11,9 +11,9 @@ Install and try for yourself:
 
 * Use only part of playlist name ```:Tunes Women who ```
 
-Fuzzy search through tracks and playlists.
+* Fuzzy search through tracks and playlists.
 
-Press Enter to play a playlist starting from selected track. Esc to quit.
+* Press Enter to play a playlist starting from selected track. Esc to quit.
 
 
 ## Installation
@@ -23,7 +23,7 @@ Press Enter to play a playlist starting from selected track. Esc to quit.
 
 * Read through [fzf.vim](https://github.com/junegunn/fzf.vim) and [fzf](https://github.com/junegunn/fzf) and configure fzf options to your taste. It helps a lot.
 
-* If you are using MacVim you need a glue connecting fzf and MacVim. But this is up to fzf installation and configuration and not this plugin.
+* ~~If you are using MacVim you need a glue connecting fzf and MacVim. But this is up to fzf installation and configuration and not this plugin.~~ [Support for fzf inside MacVim](https://github.com/junegunn/fzf.vim/issues/416#issuecomment-327982805) has been recently added by using the new native terminals in Vim 8.
 
 I am using [Vim-Plug](https://github.com/junegunn/vim-plug) and don't know much about other plugin managers. In Vim-Plug just add [in right place] to your .vimrc ``` Plug 'chew-z/itunes.vim'```
 
@@ -101,7 +101,7 @@ Plugin plays selected track in a context of chosen playlist. Play queue is fille
 
 * ```:TunesOnline ```  - toggles Online/Offline mode
 
-* ```:TunesRefresh ``` - refreshes cache with iTunes Library
+* ```:TunesRefresh ``` - synchronizes local cache with iTunes Library
 
 * ```:TunesList [playlist] ``` - fills buffer with search results
 
