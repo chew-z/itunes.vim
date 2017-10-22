@@ -195,7 +195,7 @@ function! itunes#search_and_play(args)
                 \ 'sink':   function('s:handler'),
                 \ 'options': '-i' .
                 \ ' --header "Enter to play track Esc to exit ? toggles preview ['  . l:online . ']"' .
-                \ ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/'' | xargs osascript -l JavaScript ' .  s:files.Play . ')" ' .
+                \ ' --bind "enter:execute-silent(echo -n {} | sed -e ''s/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/'' | xargs osascript -l JavaScript ' .  s:files.Play . ')" ' .
                 \ ' --preview="echo -e {} | tr ''|'' ''\n'' | sed -e ''s/^ //g'' | tail -r " ' .
                 \ ' --preview-window down:4:wrap' .
                 \ ' --bind "?:toggle-preview"'
