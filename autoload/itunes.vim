@@ -137,14 +137,13 @@ endfunction
 let s:folder = expand('<sfile>:p:h')
 let s:files = {
             \ 'Play':       s:folder .  '/iTunes_Play_Playlist_Track.scpt',
-            \ 'Search':     s:folder .  '/iTunes_Search_fzf.scpt',
             \ 'Search2':    s:folder .  '/iTunes_Search2_fzf.scpt',
             \ 'Cache':      s:folder .  '/iTunes_Library_Cache.txt'
             \ }
 if g:itunes_verbose
     echom s:folder
     echom s:files.Play
-    echom s:files.Search
+    echom s:files.Search2
     echom s:files.Cache
 endif
 
