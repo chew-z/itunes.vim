@@ -38,7 +38,10 @@ function run(argv) {
         // if (verbose) { playlists.forEach( p => { console.log(p.name(), p.class()) }) }
         if (verbose) { playlists.forEach( function(p) { console.log(p.name(), p.class()) }) }
 
-        function flatten(arr) { return Array.prototype.concat.apply([], arr); }
+        function flatten(arr) { 
+            var flat = [].concat.apply([], arr);
+            return flat; 
+        }
         var tr
         if (argv[0] === 'Offline') {
             // tr = flatten(playlists.map( p => { 

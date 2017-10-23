@@ -27,7 +27,7 @@ function run(argv) {
         var playlist = itunes.playlists.byName(argv[0]);
         if (verbose) { console.log('Playing from: ', playlist.name(), JSON.stringify(playlist.properties())) } 
         var tracks = playlist.tracks();
-        if (verbose) { tracks.forEach(t => { console.log(t.id(), t.name()) } ) } 
+        if (verbose) { tracks.forEach(function(t) { console.log(t.id(), t.name()) } ) } 
         
         itunes.mute = true;
         playlist.reveal();
