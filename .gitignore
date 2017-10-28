@@ -1,2 +1,3 @@
 autoload/iTunes_Library_Cache.txt
 *.bak
+autoload/Search.scpt

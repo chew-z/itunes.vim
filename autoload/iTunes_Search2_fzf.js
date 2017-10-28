@@ -36,7 +36,8 @@ function run(argv) {
         }
         if (verbose) { playlists.forEach( p => { console.log(p.name(), p.class()) }) }
 
-        function flatten(arr) { return Array.prototype.concat.apply([], arr); }
+        // function flatten(arr) { return Array.prototype.concat.apply([], arr); }
+        function flatten(arr) { return arr.reduce((a, b) => a.concat(b), []); }
         let tr
         if (argv[0] === 'Online') {
             tr = flatten(playlists.map( p => { 
