@@ -5,9 +5,9 @@
 ObjC.import("stdlib")
 function run(argv) {
     'use strict';
-    var itunes = Application('iTunes');
-    var library = itunes.sources.whose({kind: "klib"})[0];
-    var verbose = false;
+    var itunes = Application('Music');
+    var library = music.sources['Library']
+    var verbose = true;
 
     var args = $.NSProcessInfo.processInfo.arguments                            // NSArray
     var argv = []

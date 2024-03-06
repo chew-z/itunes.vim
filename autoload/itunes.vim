@@ -21,7 +21,7 @@ if !executable('fzf')
 endif
 
 if !exists('g:itunes_online')
-    let g:itunes_online = 0
+    let g:itunes_online = 1
 endif
 
 if !exists('g:itunes_verbose')
@@ -111,18 +111,17 @@ function! RefreshLibrary_JobEnd(channel)
         Silent touch s:files.Cache
     endif
     call s:saveVariable(s:cache, s:files.Cache)
-    if filereadable(s:files.Cache) | echom 'iTunes Library refreshed' | endif
+    if filereadable(s:files.Cache) | echom 'Music Library refreshed' | endif
     unlet g:itunes_refreshLibrary
     if g:itunes_verbose | echom 'RefreshLibrary job finished with' len(s:cache) 'items' | endif 
-    let s:online = g:itunes_online
 endfunction
 
-function! s:refreshLibrary(jxa_exec, mode)
+function! s:refreshLibrary(jxa_exec)
     if exists('g:itunes_refreshLibrary')
         if g:itunes_verbose | echom 'refreshLibrary task is already running in background' | endif
     else
         let g:itunes_refreshLibrary = tempname()
-        let l:cmd = ['osascript', '-l', 'JavaScript',  a:jxa_exec, a:mode]
+        let l:cmd = ['osascript', '-l', 'JavaScript',  a:jxa_exec]
 
         if g:itunes_verbose | echom string(l:cmd) | endif
         if g:itunes_verbose | echom string(g:itunes_refreshLibrary) | endif
@@ -132,7 +131,7 @@ function! s:refreshLibrary(jxa_exec, mode)
     endif
 endfunction
 
-" Local varaiables
+" Local variables
 
 let s:folder = expand('<sfile>:p:h')
 let s:files = {
@@ -156,7 +155,7 @@ endif
 " s:tracks stores transformed s:cache for feeding fzf
 let s:tracks = []
 " refreshed when async job finished
-let s:online = g:itunes_online
+" let s:online = g:itunes_online
 
 " FZF sink function
 
@@ -176,16 +175,15 @@ function! itunes#search_and_play(args)
     if filereadable(s:files.Cache) | let s:cache = s:restoreVariable(s:files.Cache) | endif 
     if empty(s:cache)
         if exists('g:itunes_refreshLibrary')
-            echom 'iTunes Library Cache is refreshing'
+            echom 'Music Library Cache is refreshing'
             return 1
         else
-            echom 'Let me get iTunes Library first '
+            echom 'Let me get Music Library first '
             call itunes#refreshLibrary()
             return 1
         endif
     endif
-    let l:online = 'Offline'
-    if s:online | let l:online = 'Online' | endif
+    let l:online = 'Online'
     call itunes#transform(a:args)
     "   TODO - live refresh in fzf?
     "   TODO - toggle search mode <all><track name><playlist name><track album> ?
@@ -194,6 +192,7 @@ function! itunes#search_and_play(args)
                 \ 'source': s:tracks,
                 \ 'sink':   function('s:handler'),
                 \ 'options': '-i' .
+                \ ' --color fg+:italic,hl:-1:underline,hl+:-1:reverse:underline' . 
                 \ ' --header "Enter to play track Esc to exit ? toggles preview ['  . l:online . ']"' .
                 \ ' --bind "enter:execute-silent(echo -n {} | sed -e ''s/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/'' | xargs osascript -l JavaScript ' .  s:files.Play . ')" ' .
                 \ ' --preview="echo -e {} | tr ''|'' ''\n'' | sed -e ''s/^ //g'' | tail -r " ' .
@@ -204,11 +203,7 @@ endfunction
 
 function! itunes#refreshLibrary()
     let l:jxa_path = s:files.Search2
-    if g:itunes_online
-        call s:refreshLibrary(l:jxa_path, 'Online')
-    else
-        call s:refreshLibrary(l:jxa_path, 'Offline')
-    endif  
+    call s:refreshLibrary(l:jxa_path)
 endfunction
 
 function! itunes#transform(query)
@@ -224,18 +219,6 @@ function! itunes#transform(query)
     endif
     call s:refreshTracks(a:query)
     " call itunes#search_and_play('Dummy')
-endfunction
-
-function! itunes#toggleOnline()
-    " Toggle On-line and refresh List Cache
-    if g:itunes_verbose | echom 'Online' g:itunes_online | endif
-    if g:itunes_online
-        let g:itunes_online = 0
-    else
-        let g:itunes_online = 1
-    endif
-    call itunes#refreshLibrary()
-    if g:itunes_verbose | echom 'Online' g:itunes_online | endif
 endfunction
 
 function! itunes#list(args)
