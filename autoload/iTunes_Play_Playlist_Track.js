@@ -3,9 +3,10 @@
 // @flow-NotIssue
 // osacompile -l JavaScript -o iTunes_Play_Tracks.scpt iTunes_Play_Tracks.js
 ObjC.import('stdlib')
+
 function run(argv) {
     'use strict'
-    var music = Application('Music')
+    let music = Application('Music')
     const verbose = false
 
     var args = $.NSProcessInfo.processInfo.arguments // NSArray

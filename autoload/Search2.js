@@ -6,7 +6,7 @@ ObjC.import('stdlib')
 
 function run(argv) {
     'use strict'
-    var music = Application('Music')
+    let music = Application('Music')
     const verbose = false
 
     var args = $.NSProcessInfo.processInfo.arguments // NSArray
@@ -61,8 +61,8 @@ function run(argv) {
 
         if (tr.length > 0) {
             // return tr.join('\n');
-            return JSON.stringify(tr, null, 4)
-            // return JSON.stringify(tr)
+            // return JSON.stringify(tr, null, 4)
+            return JSON.stringify(tr)
         } else {
             $.exit(1)
         }
