@@ -1,37 +1,36 @@
 # itunes.vim
-**Fuzzy search and play iTunes tracks from VIM. You have no idea what gems are hidden in your Music Library**
+
+**Fuzzy search and play Apple Music~~iTunes~~ tracks from VIM. You have no idea what gems are hidden in your Music Library**
+
+After 7 years I have updated pluging to reflect new reality. iTunes is long gone and I am using Apple Music now.
 
 Install and try for yourself:
 
 ![Live demo of itunes.vim](gif/itunes.gif)
 
-* Search tracks in Library on your Mac ```:Tunes ```
+-   Search tracks in Library on your Mac `:Tunes `
 
-* Search only through single playlist ```:Tunes Women who know how to sing ```
+-   Search only through single playlist `:Tunes Women who know how to sing `
 
-* Use only part of playlist name ```:Tunes Women who ```
+-   Use only part of playlist name `:Tunes Women who `
 
-* Fuzzy search through tracks and playlists.
+-   Fuzzy search through tracks and playlists.
 
-* Press Enter to play a playlist starting from selected track. Esc to quit.
-
+-   Press Enter to play a playlist starting from selected track. Esc to quit.
 
 ## Installation
 
+-   You will need [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. <sup>[6](#myfootnote6)</sup>
 
-* You will need [fzf](https://github.com/junegunn/fzf) installed and activated in VIM. <sup>[6](#myfootnote6)</sup>
+-   Read through [fzf.vim](https://github.com/junegunn/fzf.vim) and [fzf](https://github.com/junegunn/fzf) and configure fzf options to your taste. It helps a lot.
 
-* Read through [fzf.vim](https://github.com/junegunn/fzf.vim) and [fzf](https://github.com/junegunn/fzf) and configure fzf options to your taste. It helps a lot.
+I am using [Vim-Plug](https://github.com/junegunn/vim-plug) and don't know much about other plugin managers. In Vim-Plug just add [in right place] to your .vimrc ` Plug 'chew-z/itunes.vim'`
 
-* ~~If you are using MacVim you need a glue connecting fzf and MacVim. But this is up to fzf installation and configuration and not this plugin.~~ [Support for fzf inside MacVim](https://github.com/junegunn/fzf.vim/issues/416#issuecomment-327982805) has been recently added by using the new native terminals in Vim 8. However you might see some strange artifacts from time to time.
-
-I am using [Vim-Plug](https://github.com/junegunn/vim-plug) and don't know much about other plugin managers. In Vim-Plug just add [in right place] to your .vimrc ``` Plug 'chew-z/itunes.vim'```
-
-and run ```:PlugInstall```
+and run `:PlugInstall`
 
 This plugin includes compiled Javascript scripts - JXA [(Javascript for Automation)](https://gist.github.com/JMichaelTX/d29adaa18088572ce6d4) - that glue to iTunes. Trust me, there is no malicious code inside.
 
-Because you should  generally not trust people on the internet you can review the code (in .js files) and compile for yourself.
+Because you should generally not trust people on the internet you can review the code (in .js files) and compile for yourself.
 
 ```
 osacompile -l JavaScript -o iTunes_Search2_fzf.scpt iTunes_Search2_fzf.js
@@ -41,23 +40,21 @@ osacompile -l JavaScript -o iTunes_Play_Tracks.scpt iTunes_Play_Tracks.js
 
 ## How it works?
 
-See for yourself. There are three stages. 
+See for yourself. There are three stages.
 
-1) **Enter ```:Tunes``` command in VIM to search for playlist(s)**
+1. **Enter `:Tunes` command in VIM to search for playlist(s)**
 
-Without any parameters Tunes searches your entire Library (or however it is called in your locale) but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them).<sup>[1](#myfootnote1)</sup>
+Without any parameters Tunes searches your entire Music Library ~~(or however it is called in your locale) but only retrieves tracks that are downloaded to your computer (file tracks as Apple calls them)~~.<sup>[1](#myfootnote1)</sup>
 
-If you insists on getting also on-line tracks every time just add to your .vimrc. ``` let g:itunes_online = 1```
+Everything is now online and this logic has been removed. ~~If you insists on getting also on-line tracks every time just add to your .vimrc. ` let g:itunes_online = 1`~~
 
-You can also toggle Online/Offline mode with ```TunesOnline``` command.
-
-In large collection gathering all tracks takes a minute or two. It is done in the background with async script. You should see a message *'iTunes Library refreshed'* when it's done. It will only happen first time you start the plugin.
+In large collection gathering all tracks takes a minute or two. It is done in the background with async script. You should see a message _'iTunes Library refreshed'_ when it's done. It will only happen first time you start the plugin.
 
 Your tracks and playlists are cached and during subsequent runs you should see results in an instant. Cache is persistent and stays between VIM restarts. All subsequent queries are against a cache hence they are quick.
 
-If you add new tracks and playlists you may want to refresh cache of iTunes Library. ```:TunesRefresh``` does just that. Again refreshing takes a minute and you may not see results right away. 
+If you add new tracks and playlists you may want to refresh cache of iTunes Library. `:TunesRefresh` does just that. Again refreshing takes a minute and you may not see results right away.
 
-Toggling Online/Offline with ```TunesOnline```  also refreshes cache.<sup>[3](#myfootnote3)</sup>
+~~Toggling Online/Offline with `TunesOnline` also refreshes cache.<sup>[3](#myfootnote3)</sup>~~
 
 You can narrow down initial results providing name of playlist or at least partial name.
 
@@ -71,61 +68,56 @@ You can narrow down initial results providing name of playlist or at least parti
 
 ```
 
-2) **Fuzzy search through songs**
+2. **Fuzzy search through songs**
 
 fzf is searching through
 
-  - playlist tittle
-  - track tittle
-  - track album
-  - track artist
+-   playlist tittle
+-   track tittle
+-   track album
+-   track artist
 
 Try, this is cool, fzf is great tool.
 
 You can toggle preview window with '?'. Or clear your search phrase with Ctrl-U (like in terminal).
 
-If more then one playlist matches your ```:Tunes ``` search you could have doubled/multiplied results (if the track belongs to more then one playlist) <sup>[2](#myfootnote2)</sup>. It is cool feature as I can finally locate where my tracks got lost.
+If more then one playlist matches your `:Tunes ` search you could have doubled/multiplied results (if the track belongs to more then one playlist) <sup>[2](#myfootnote2)</sup>. It is cool feature as I can finally locate where my tracks got lost.
 
-3) **Press Enter to select and play track**
+3. **Press Enter to select and play track**
 
 Plugin plays selected track in a context of chosen playlist. Play queue is filled with playlist and we start playing from selected tracks. It clears what has been in iTunes queue before.
 
-4) **Repeat 2) and 3) as long as you wish**
+4. **Repeat 2) and 3) as long as you wish**
 
-5) **Press Escape to exit fzf window and do something productive in VIM**.
-
+5. **Press Escape to exit fzf window and do something productive in VIM**.
 
 ## Commands
 
-* ```:Tunes [playlist] ``` - starts the jukebox
+-   `:Tunes [playlist] ` - starts the jukebox
 
-* ```:TunesOnline ```  - toggles Online/Offline mode
+-   `:TunesOnline ` - toggles Online/Offline mode
 
-* ```:TunesRefresh ``` - synchronizes local cache with iTunes Library
+-   `:TunesRefresh ` - synchronizes local cache with iTunes Library
 
-* ```:TunesList [playlist] ``` - fills buffer with search results
+-   `:TunesList [playlist] ` - fills buffer with search results
 
 and one global variable
 
-* ```let g:itunes_online = 0 [default] ``` - set to 1 for Online mode as default.
-
+-   `let g:itunes_online = 0 [default] ` - set to 1 for Online mode as default.
 
 ## Why is it cool?
 
+-   Play music without leaving VIM. Choose playlist that enhances your focus
 
-* Play music without leaving VIM. Choose playlist that enhances your focus
+-   Fuzzy searching through iTunes Library with fzf is cool
 
-* Fuzzy searching through iTunes Library with fzf is cool
+-   Collecting iTunes Library async (not blocking your work in VIM)
 
-* Collecting iTunes Library async (not blocking your work in VIM)
+-   iTunes Library is cached persistent so you are getting instant results also after restarting VIM
 
-* iTunes Library is cached persistent so you are getting instant results also after restarting VIM
-
-* Using JavaScript (JXA) as glue to iTunes instead of walking disaster cum enigma that AppleScript is
-
+-   Using JavaScript (JXA) as glue to iTunes instead of walking disaster cum enigma that AppleScript is
 
 ## But I don't need yet another VIM plugin
-
 
 Fair enough.
 
@@ -152,9 +144,9 @@ Just add to your .vimrc
   command! -nargs=* Tunes call fzf#run({
       \ 'source':  'osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Search_fzf.scpt ' .  <q-args>,
       \ 'sink':   function('<sid>itunes_handler'),
-      \ 'options': '--header "Enter to play track. Esc to exit."' . 
+      \ 'options': '--header "Enter to play track. Esc to exit."' .
       \ ' --preview="echo -e {} | tr ''|'' ''\n'' | gsed -e ''s/^ //g'' | tail -r " ' .
-      \ ' --preview-window down:4:wrap' . 
+      \ ' --preview-window down:4:wrap' .
       \ ' --bind "?:toggle-preview"' .
       \ ' --bind "enter:execute-silent(echo -n {} | gsed -e ''s/^\(.*\) | \(.*\) | \(.*\) | \(.*$\)/\"\1\" \"\4\"/'' | xargs osascript -l JavaScript ' . s:jxa_folder . '/iTunes_Play_Playlist_Track.scpt ' .  ')" '
       \ }
@@ -162,9 +154,7 @@ Just add to your .vimrc
 
 But mind that there is no async loading and catching of iTunes Library here.
 
-
 ## Why use VIM just to play single track in iTunes?
-
 
 You are right. Just add following function to your .zshrc or whatever shell you use [zsh tested].
 
@@ -185,23 +175,21 @@ You are right. Just add following function to your .zshrc or whatever shell you 
   }
 ```
 
-Restart your Terminal/iTerm and type ```tunes```
+Restart your Terminal/iTerm and type `tunes`
 
-Or try from commandline ``` vim -c 'Tunes' ```
+Or try from commandline `vim -c 'Tunes'`
 
-You can add an alias ``` alias tunes="vim -c 'Tunes'" ```
-
+You can add an alias `alias tunes="vim -c 'Tunes'"`
 
 ## Footnotes.
 
-
 [0]: How do you create proper footnotes in this weird markdown flavour?
 
-<a name="myfootnote1">1</a>: This is not First World problem but I am developing this plugin on an island off Sumatra and Internet could be spotty and my mobile package is limited. 
+<a name="myfootnote1">1</a>: This is not First World problem but I am developing this plugin on an island off Sumatra and Internet could be spotty and my mobile package is limited.
 
-Just right now internet slowed down to [EDGE (check in Wikipedia if you are too young to know what it is)](https://en.wikipedia.org/wiki/Enhanced_Data_Rates_for_GSM_Evolution) - cause of rain and heavy wind during the night probably. 
+Just right now internet slowed down to [EDGE (check in Wikipedia if you are too young to know what it is)](https://en.wikipedia.org/wiki/Enhanced_Data_Rates_for_GSM_Evolution) - cause of rain and heavy wind during the night probably.
 
-Even pushing commits is hard. Hence the Offline option is default. 
+Even pushing commits is hard. Hence the Offline option is default.
 
 I am irritated every time when I click on a track and nothing happens because online track cannot be downloaded.
 
@@ -209,6 +197,6 @@ But on the other hand I can get excellent 4G if I drive 5 km to other beach. And
 
 <a name="myfootnote2">2</a>: Many-to-many relationship. This is why refreshing cache takes a while.
 
-<a name="myfootnote3">3</a>: There is only one additional command ```:TunesList``` which fills VIM buffer with your Library (or it's subset if you pass a search query just like in ```:Tunes```.
+<a name="myfootnote3">3</a>: There is only one additional command `:TunesList` which fills VIM buffer with your Library (or it's subset if you pass a search query just like in `:Tunes`.
 
 <a name="myfootnote6">6</a>: Did I mention it works only on Mac?
