@@ -6,7 +6,6 @@ ObjC.import('stdlib')
 function run(argv) {
     'use strict'
     var music = Application('Music')
-    var library = music.sources['Library']
     const verbose = false
 
     var args = $.NSProcessInfo.processInfo.arguments // NSArray
@@ -41,6 +40,7 @@ function run(argv) {
         }
 
         music.mute = true
+        music.shuffleEnabled = true
         playlist.reveal()
         playlist.play()
 

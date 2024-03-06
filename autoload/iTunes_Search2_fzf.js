@@ -7,7 +7,7 @@ ObjC.import('stdlib')
 function run(argv) {
     'use strict'
     var music = Application('Music')
-    const verbose = true
+    const verbose = false
 
     var args = $.NSProcessInfo.processInfo.arguments // NSArray
     var argv = []
