@@ -90,7 +90,7 @@ func main() {
 			track = os.Args[3]
 		}
 
-		if err := itunes.PlayPlaylistTrack(playlist, track, ""); err != nil {
+		if err := itunes.PlayPlaylistTrack(playlist, "", track, ""); err != nil {
 			fmt.Println("Play failed:", err)
 		} else {
 			fmt.Println("Playback started.")

@@ -55,15 +55,18 @@ func main() {
 
 	// Create play tool
 	playTool := mcp.NewTool("play_track",
-		mcp.WithDescription("Play a track or album in iTunes/Apple Music. RECOMMENDED: Use track_id for reliable playback. Falls back to track name matching if ID not provided."),
+		mcp.WithDescription("Play a track in iTunes/Apple Music with proper context for continuous playback. Use track_id with either playlist (for user playlists) or album (for album playback). The `playlist` parameter now works with actual user-created playlists."),
 		mcp.WithString("track_id",
-			mcp.Description("RECOMMENDED: Use the EXACT 'id' field value from search_itunes results. This is the most reliable method for track identification and avoids encoding/character issues with complex track names."),
+			mcp.Description("RECOMMENDED: Use the EXACT 'id' field value from search_itunes results. Most reliable method that avoids encoding/character issues."),
 		),
 		mcp.WithString("playlist",
-			mcp.Description("Optional playlist/collection name from search_itunes results. Use the exact 'collection' field value. If empty or playlist not found, will play individual track directly."),
+			mcp.Description("For playlist context: Use the exact 'collection' field value or a value from the 'playlists' array. Provides playlist context so playback continues with next tracks in playlist."),
+		),
+		mcp.WithString("album",
+			mcp.Description("For album context: Use the exact 'album' field value from search_itunes results. Provides album context so playback continues with next tracks in album."),
 		),
 		mcp.WithString("track",
-			mcp.Description("FALLBACK: Use the EXACT 'name' field value from search_itunes results. Only use this if track_id is not available. Track name matching is fragile with complex names - prefer track_id."),
+			mcp.Description("FALLBACK: Use the EXACT 'name' field value from search_itunes results. Only use if track_id unavailable. Less reliable with complex names - prefer track_id."),
 		),
 	)
 
@@ -157,14 +160,15 @@ func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 	// Get parameters - track_id is preferred, then track name as fallback
 	trackID := request.GetString("track_id", "")
 	playlist := request.GetString("playlist", "")
+	album := request.GetString("album", "")
 	track := request.GetString("track", "")
 
 	// Need at least one track identifier
-	if playlist == "" && track == "" && trackID == "" {
-		return mcp.NewToolResultError("Either playlist, track, or track_id parameter must be provided"), nil
+	if playlist == "" && album == "" && track == "" && trackID == "" {
+		return mcp.NewToolResultError("Either playlist, album, track, or track_id parameter must be provided"), nil
 	}
 
-	err := itunes.PlayPlaylistTrack(playlist, track, trackID)
+	err := itunes.PlayPlaylistTrack(playlist, album, track, trackID)
 	if err != nil {
 		if errors.Is(err, itunes.ErrScriptFailed) {
 			return mcp.NewToolResultError(fmt.Sprintf("Unable to control Apple Music: %v", err)), nil
@@ -176,17 +180,23 @@ func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 	if trackID != "" {
 		if playlist != "" {
 			return mcp.NewToolResultText(fmt.Sprintf("Started playing track ID '%s' from playlist '%s'", trackID, playlist)), nil
+		} else if album != "" {
+			return mcp.NewToolResultText(fmt.Sprintf("Started playing track ID '%s' from album '%s'", trackID, album)), nil
 		} else {
 			return mcp.NewToolResultText(fmt.Sprintf("Started playing track by ID: %s", trackID)), nil
 		}
 	} else if track != "" {
 		if playlist != "" {
 			return mcp.NewToolResultText(fmt.Sprintf("Started playing track '%s' from playlist '%s'", track, playlist)), nil
+		} else if album != "" {
+			return mcp.NewToolResultText(fmt.Sprintf("Started playing track '%s' from album '%s'", track, album)), nil
 		} else {
 			return mcp.NewToolResultText(fmt.Sprintf("Started playing track: %s", track)), nil
 		}
 	} else if playlist != "" {
 		return mcp.NewToolResultText(fmt.Sprintf("Started playing playlist '%s'", playlist)), nil
+	} else if album != "" {
+		return mcp.NewToolResultText(fmt.Sprintf("Started playing album '%s'", album)), nil
 	}
 
 	return mcp.NewToolResultText("Playback started"), nil
@@ -210,15 +220,17 @@ func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 		return mcp.NewToolResultText("Library refresh completed, but couldn't parse cache."), nil
 	}
 
-	// Count unique playlists
+	// Count unique playlists by iterating through the new Playlists field
 	playlistSet := make(map[string]bool)
 	for _, track := range tracks {
-		if track.Collection != "" {
-			playlistSet[track.Collection] = true
+		for _, playlist := range track.Playlists {
+			if playlist != "" {
+				playlistSet[playlist] = true
+			}
 		}
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf("Library refresh completed successfully!\n\n📊 **Cache Statistics:**\n• **%d tracks** cached from your iTunes library\n• **%d playlists** scanned\n• Cache location: %s\n\n✅ You can now search for music with fast, token-efficient results (max 15 tracks per search).", len(tracks), len(playlistSet), cacheFile)), nil
+	return mcp.NewToolResultText(fmt.Sprintf("Library refresh completed successfully!\n\n📊 **Cache Statistics:**\n• **%d tracks** cached from your iTunes library\n• **%d playlists** scanned and indexed\n• Cache location: %s\n\n✅ You can now search for music with fast, token-efficient results (max 15 tracks per search).", len(tracks), len(playlistSet), cacheFile)), nil
 }
 
 // Resource handlers for cache access

@@ -21,16 +21,18 @@ var (
 
 // Track describes one track from the script's output
 type Track struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Album      string `json:"album"`
-	Collection string `json:"collection"`
-	Artist     string `json:"artist"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Album      string   `json:"album"`
+	Collection string   `json:"collection"`
+	Artist     string   `json:"artist"`
+	Playlists  []string `json:"playlists"`
 }
 
-// PlayPlaylistTrack runs the embedded iTunes_Play_Playlist_Track.js script to play a playlist or track.
-// If trackName is "", only the playlist will play. If trackID is provided, it takes priority over trackName.
-func PlayPlaylistTrack(playlistName, trackName, trackID string) error {
+// PlayPlaylistTrack runs the embedded iTunes_Play_Playlist_Track.js script to play a playlist, album, or track.
+// If trackName is "", only the playlist/album will play. If trackID is provided, it takes priority over trackName.
+// Either playlistName or albumName can be provided for context, but not both.
+func PlayPlaylistTrack(playlistName, albumName, trackName, trackID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -52,6 +54,9 @@ func PlayPlaylistTrack(playlistName, trackName, trackID string) error {
 
 	// Always pass playlist name (empty string if not provided)
 	args = append(args, playlistName)
+
+	// Always pass album name (empty string if not provided)
+	args = append(args, albumName)
 
 	// Always pass track name (empty string if not provided)
 	args = append(args, trackName)
@@ -143,9 +148,10 @@ func SearchTracksFromCache(query string) ([]Track, error) {
 		if trackName == queryLower || artistName == queryLower {
 			exactMatches = append(exactMatches, track)
 		} else {
-			// Check partial matches in all searchable fields including track ID
+			// Check partial matches in all searchable fields including track ID and playlists
 			trackID := strings.ToLower(track.ID)
-			searchableText := strings.Join([]string{collectionName, trackName, artistName, albumName, trackID}, " ")
+			playlistsStr := strings.ToLower(strings.Join(track.Playlists, " "))
+			searchableText := strings.Join([]string{collectionName, trackName, artistName, albumName, trackID, playlistsStr}, " ")
 			if strings.Contains(searchableText, queryLower) {
 				partialMatches = append(partialMatches, track)
 			}

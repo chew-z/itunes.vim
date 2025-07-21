@@ -60,11 +60,12 @@ This is a Go-based iTunes/Apple Music integration tool that bridges between comm
 
 ```go
 type Track struct {
-    ID         string `json:"id"`
-    Name       string `json:"name"`
-    Album      string `json:"album"`
-    Collection string `json:"collection"` // Playlist name
-    Artist     string `json:"artist"`
+    ID         string   `json:"id"`
+    Name       string   `json:"name"`
+    Album      string   `json:"album"`
+    Collection string   `json:"collection"` // Primary playlist name or album if not in a playlist
+    Artist     string   `json:"artist"`
+    Playlists  []string `json:"playlists"`  // New: All playlists containing this track
 }
 ```
 
@@ -76,12 +77,13 @@ type Track struct {
 - **Returns**: JSON array of matching tracks with metadata
 
 ### `play_track`
-- **Description**: Play a track or album using reliable ID-based lookup. RECOMMENDED: Use `track_id` for best reliability.
+- **Description**: Play a track with proper context for continuous playback. Use `track_id` with either `playlist` or `album` for optimal experience. The `playlist` parameter now works with actual user-created playlists.
 - **Parameters**:
-  - `track_id` (string, optional): **RECOMMENDED** - Use the exact `id` field value from search results. Most reliable method that avoids encoding/character issues with complex track names.
-  - `playlist` (string, optional): Collection name from search results. Use exact `collection` field value.
+  - `track_id` (string, optional): **RECOMMENDED** - Use the exact `id` field value from search results. Most reliable method that avoids encoding/character issues.
+  - `playlist` (string, optional): **For playlist context** - Use when playing from a user-created playlist. Use exact `collection` field value or a value from the `playlists` array.
+  - `album` (string, optional): **For album context** - Use the exact `album` field value from search results. Provides album context for continuous playback.
   - `track` (string, optional): **FALLBACK** - Use the exact `name` field value from search results. Only use if `track_id` not available. Less reliable with complex names.
-- **Returns**: Text confirmation of playback status with method used (ID vs name)
+- **Returns**: Text confirmation of playback status with context used
 
 ### `refresh_library`
 - **Description**: Refresh iTunes library cache (1-3 minutes for large libraries)
@@ -90,19 +92,29 @@ type Track struct {
 
 ## Usage Patterns
 
-**RECOMMENDED: ID-based playback (most reliable):**
+**BEST PRACTICE: ID-based with album context (continuous playback):**
+```json
+{"track_id": "B258396D58E2ECC9", "album": "Cul-De-Sac & Knife In The Water"}
+```
+
+**BEST PRACTICE: ID-based with playlist context (continuous playback):**
+```json
+{"track_id": "B258396D58E2ECC9", "playlist": "My Jazz Collection"}
+```
+
+**ID-only playback (single track only):**
 ```json
 {"track_id": "B258396D58E2ECC9"}
 ```
 
-**ID-based with playlist context:**
+**FALLBACK: Name-based with album context:**
 ```json
-{"playlist": "City Lights - Single", "track_id": "A1B2C3D4E5F6789A"}
+{"track": "Walk On The Water", "album": "Cul-De-Sac & Knife In The Water"}
 ```
 
-**FALLBACK: Name-based playback (less reliable):**
+**FALLBACK: Name-only playbook (single track, less reliable):**
 ```json
-{"track": "SomaFM: Lush (#1): Sensuous and mellow female vocals..."}
+{"track": "Walk On The Water"}
 ```
 
 **Key Requirements:**
