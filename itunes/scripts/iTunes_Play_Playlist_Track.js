@@ -98,10 +98,12 @@ function run(argv) {
                     if (verbose) {
                         console.log("Found track in playlist: " + foundTrack.name());
                     }
-                    // Proper sequence for context-aware playback
+                    // Restoring the original, correct sequence for context-aware playback.
                     music.mute = true;
-                    playlist.play(); // Play the whole playlist to set the queue
-                    foundTrack.play(); // Immediately switch to the desired track
+                    music.shuffleEnabled = true; // This seems to be a key part of the sequence
+                    playlist.reveal();
+                    playlist.play(); // Start the playlist to load the queue
+                    foundTrack.play(); // Immediately play the target track
                     music.mute = false;
                     return "OK: Started playing track '" + foundTrack.name() + "' from playlist '" + playlistName + "'";
                 } else {
@@ -118,43 +120,55 @@ function run(argv) {
             
             try {
                 let libraryPlaylist = music.libraryPlaylists[0];
-                let targetTrack = null;
-
-                // Find the target track first
-                if (trackId !== "") {
-                    let tracksByID = libraryPlaylist.tracks.whose({persistentID: trackId, album: albumName});
-                    if (tracksByID.length > 0) {
-                        targetTrack = tracksByID[0];
-                    }
-                }
-                if (!targetTrack && trackName !== "") {
-                    let tracksByName = libraryPlaylist.tracks.whose({name: trackName, album: albumName});
-                    if (tracksByName.length > 0) {
-                        targetTrack = tracksByName[0];
-                    }
-                }
-
-                // If a specific track is found, play it with album context
-                if (targetTrack) {
-                    if (verbose) {
-                        console.log("Found target track in album: " + targetTrack.name());
-                    }
-                    // To play a track in album context, we play the track itself.
-                    // The Music app should handle the "Up Next" queue automatically.
-                    targetTrack.play();
-                    return "OK: Started playing track '" + targetTrack.name() + "' from album '" + albumName + "'";
-                }
-
-                // If no specific track requested, or if track wasn't found, play the whole album
                 let albumTracks = libraryPlaylist.tracks.whose({album: albumName});
-                if (albumTracks.length > 0) {
+
+                if (albumTracks.length === 0) {
+                    return "ERROR: Album not found: " + albumName;
+                }
+
+                // If no specific track is requested, just play the album from the start.
+                if (trackName === "" && trackId === "") {
                     if (verbose) {
                         console.log("Playing album from beginning: " + albumName);
                     }
                     albumTracks[0].play();
                     return "OK: Started playing album: " + albumName;
+                }
+
+                // Find the specific track within the album tracks we already found.
+                let targetTrack = null;
+                if (trackId !== "") {
+                    for (let i = 0; i < albumTracks.length; i++) {
+                        if (albumTracks[i].persistentID() === trackId) {
+                            targetTrack = albumTracks[i];
+                            break;
+                        }
+                    }
+                }
+                if (!targetTrack && trackName !== "") {
+                    for (let i = 0; i < albumTracks.length; i++) {
+                        if (albumTracks[i].name() === trackName) {
+                            targetTrack = albumTracks[i];
+                            break;
+                        }
+                    }
+                }
+
+                // If we found the target track, play it using the context-setting sequence.
+                if (targetTrack) {
+                    if (verbose) {
+                        console.log("Found " + albumTracks.length + " tracks in album, playing: " + targetTrack.name());
+                    }
+                    // Apply the same logic that worked for playlists to albums.
+                    music.mute = true;
+                    music.shuffleEnabled = true;
+                    targetTrack.reveal(); // Reveal the track itself
+                    albumTracks[0].play(); // Play first track of album to set context
+                    targetTrack.play(); // Immediately jump to the target track
+                    music.mute = false;
+                    return "OK: Started playing track '" + targetTrack.name() + "' from album '" + albumName + "'";
                 } else {
-                    return "ERROR: Album not found: " + albumName;
+                    return "ERROR: Track not found in album '" + albumName + "'";
                 }
             } catch (e) {
                 return "ERROR: Album playback failed: " + e.message;
