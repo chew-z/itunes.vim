@@ -143,8 +143,9 @@ func SearchTracksFromCache(query string) ([]Track, error) {
 		if trackName == queryLower || artistName == queryLower {
 			exactMatches = append(exactMatches, track)
 		} else {
-			// Check partial matches in all searchable fields
-			searchableText := strings.Join([]string{collectionName, trackName, artistName, albumName}, " ")
+			// Check partial matches in all searchable fields including track ID
+			trackID := strings.ToLower(track.ID)
+			searchableText := strings.Join([]string{collectionName, trackName, artistName, albumName, trackID}, " ")
 			if strings.Contains(searchableText, queryLower) {
 				partialMatches = append(partialMatches, track)
 			}
