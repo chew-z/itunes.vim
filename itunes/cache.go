@@ -218,3 +218,68 @@ func (cm *CacheManager) CleanupExpired() error {
 
 	return nil
 }
+
+// GetAllCachedQueries returns all cached queries with metadata
+func (cm *CacheManager) GetAllCachedQueries() []map[string]interface{} {
+	var queries []map[string]interface{}
+
+	// Get from memory cache
+	for _, item := range cm.memCache.Items() {
+		if entry, ok := item.Object.(CacheEntry); ok {
+			queries = append(queries, map[string]interface{}{
+				"query":       entry.Query,
+				"hash":        entry.Hash,
+				"timestamp":   entry.Timestamp,
+				"track_count": len(entry.Tracks),
+				"source":      "memory",
+			})
+		}
+	}
+
+	// Get from file cache (entries not in memory)
+	searchDir := filepath.Join(cm.cacheDir, "searches")
+	entries, err := os.ReadDir(searchDir)
+	if err != nil {
+		return queries
+	}
+
+	for _, entry := range entries {
+		if !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+
+		hash := strings.TrimSuffix(entry.Name(), ".json")
+
+		// Skip if already in memory cache
+		if _, found := cm.memCache.Get(hash); found {
+			continue
+		}
+
+		// Read file to get metadata
+		filePath := filepath.Join(searchDir, entry.Name())
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			continue
+		}
+
+		var cacheEntry CacheEntry
+		if err := json.Unmarshal(data, &cacheEntry); err != nil {
+			continue
+		}
+
+		queries = append(queries, map[string]interface{}{
+			"query":       cacheEntry.Query,
+			"hash":        cacheEntry.Hash,
+			"timestamp":   cacheEntry.Timestamp,
+			"track_count": len(cacheEntry.Tracks),
+			"source":      "file",
+		})
+	}
+
+	return queries
+}
+
+// GetCachedResults returns the tracks for a specific query
+func (cm *CacheManager) GetCachedResults(query string) ([]Track, bool) {
+	return cm.Get(query)
+}

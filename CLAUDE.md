@@ -125,6 +125,73 @@ The MCP server exposes two tools for LLM integration:
 
 Configure the MCP server in your Claude Code MCP settings to enable iTunes integration in conversations.
 
+## MCP Resources
+
+The MCP server exposes three resources that provide access to cached data:
+
+### `itunes://cache/stats`
+
+- **Description**: Cache statistics and metadata
+- **Content-Type**: application/json
+- **Returns**: Current cache status including memory items, file cache items, and cache directory
+- **Example**:
+```json
+{
+  "memory_items": 3,
+  "cache_dir": "/tmp/itunes-cache",
+  "file_items": 5
+}
+```
+
+### `itunes://cache/queries`
+
+- **Description**: List of all cached search queries with metadata
+- **Content-Type**: application/json
+- **Returns**: Array of cached queries with their metadata
+- **Example**:
+```json
+[
+  {
+    "query": "coldplay",
+    "hash": "a1b2c3...",
+    "timestamp": "2024-01-15T10:30:00Z",
+    "track_count": 12,
+    "source": "memory"
+  }
+]
+```
+
+### `itunes://cache/latest`
+
+- **Description**: Most recent search results from cache
+- **Content-Type**: application/json
+- **Returns**: The latest search results (backward compatibility with CLI)
+- **Example**:
+```json
+[
+  {
+    "id": "65350",
+    "name": "Viva La Vida",
+    "album": "Viva La Vida or Death and All His Friends",
+    "collection": "Viva La Vida or Death and All His Friends",
+    "artist": "Coldplay"
+  }
+]
+```
+
+### Using MCP Resources
+
+MCP resources allow you to directly access cached data without using tools:
+
+```bash
+# Through Claude Code or MCP clients
+claude: "Please read the resource itunes://cache/stats"
+claude: "Show me the cached queries using itunes://cache/queries"
+claude: "Display the latest search results from itunes://cache/latest"
+```
+
+Resources provide a more efficient way to access cached data compared to running search tools repeatedly, especially for examining cache metadata and previously executed searches.
+
 ## Caching System
 
 The iTunes integration includes a sophisticated caching system that dramatically improves performance for repeated searches.

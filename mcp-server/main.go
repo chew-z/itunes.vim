@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"itunes/itunes"
 
@@ -20,11 +21,12 @@ func main() {
 	// Initialize global cache manager
 	cacheManager = itunes.NewCacheManager()
 
-	// Create MCP server with tool capabilities
+	// Create MCP server with tool and resource capabilities
 	mcpServer := server.NewMCPServer(
 		"itunes-mcp",
 		"1.0.0",
 		server.WithToolCapabilities(true),
+		server.WithResourceCapabilities(true, true), // subscribe and list resources
 		server.WithLogging(),
 	)
 
@@ -53,7 +55,31 @@ func main() {
 	mcpServer.AddTool(searchTool, searchHandler)
 	mcpServer.AddTool(playTool, playHandler)
 
-	// TODO: Add MCP resources for cache access (implement later)
+	// Add MCP resources for cache access
+	cacheStatsResource := mcp.NewResource(
+		"itunes://cache/stats",
+		"Cache Statistics",
+		mcp.WithResourceDescription("iTunes cache statistics and metadata"),
+		mcp.WithMIMEType("application/json"),
+	)
+
+	cacheQueriesResource := mcp.NewResource(
+		"itunes://cache/queries",
+		"Cached Queries",
+		mcp.WithResourceDescription("List of all cached search queries with metadata"),
+		mcp.WithMIMEType("application/json"),
+	)
+
+	latestResultsResource := mcp.NewResource(
+		"itunes://cache/latest",
+		"Latest Search Results",
+		mcp.WithResourceDescription("Most recent search results from cache"),
+		mcp.WithMIMEType("application/json"),
+	)
+
+	mcpServer.AddResource(cacheStatsResource, cacheStatsHandler)
+	mcpServer.AddResource(cacheQueriesResource, cacheQueriesHandler)
+	mcpServer.AddResource(latestResultsResource, latestResultsHandler)
 
 	// Start stdio server
 	if err := server.ServeStdio(mcpServer); err != nil {
@@ -128,4 +154,61 @@ func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 	} else {
 		return mcp.NewToolResultText(fmt.Sprintf("Started playing playlist '%s'", playlist)), nil
 	}
+}
+
+// Resource handlers for cache access
+func cacheStatsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	stats := cacheManager.GetCacheStats()
+	statsJSON, err := json.MarshalIndent(stats, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal cache stats: %w", err)
+	}
+
+	return []mcp.ResourceContents{
+		&mcp.TextResourceContents{
+			URI:      request.Params.URI,
+			MIMEType: "application/json",
+			Text:     string(statsJSON),
+		},
+	}, nil
+}
+
+func cacheQueriesHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	queries := cacheManager.GetAllCachedQueries()
+	queriesJSON, err := json.MarshalIndent(queries, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal cached queries: %w", err)
+	}
+
+	return []mcp.ResourceContents{
+		&mcp.TextResourceContents{
+			URI:      request.Params.URI,
+			MIMEType: "application/json",
+			Text:     string(queriesJSON),
+		},
+	}, nil
+}
+
+func latestResultsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	// Read the latest results file
+	latestFile := filepath.Join(cacheManager.GetCacheDir(), "search_results.json")
+	data, err := os.ReadFile(latestFile)
+	if err != nil {
+		// If no latest results, return empty array
+		return []mcp.ResourceContents{
+			&mcp.TextResourceContents{
+				URI:      request.Params.URI,
+				MIMEType: "application/json",
+				Text:     "[]",
+			},
+		}, nil
+	}
+
+	return []mcp.ResourceContents{
+		&mcp.TextResourceContents{
+			URI:      request.Params.URI,
+			MIMEType: "application/json",
+			Text:     string(data),
+		},
+	}, nil
 }
