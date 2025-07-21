@@ -1,7 +1,7 @@
 package main
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -17,6 +17,9 @@ func main() {
 
 	command := os.Args[1]
 
+	// Initialize cache manager
+	cacheManager := itunes.NewCacheManager()
+
 	switch command {
 	case "search":
 		if len(os.Args) < 3 {
@@ -24,36 +27,51 @@ func main() {
 			return
 		}
 		query := os.Args[2]
+
+		// Check cache first
+		if cachedTracks, found := cacheManager.Get(query); found {
+			fmt.Println("(Using cached results)")
+			tracks := cachedTracks
+
+			// Save to latest results file for backward compatibility
+			if err := cacheManager.SaveLatestResults(tracks); err != nil {
+				fmt.Printf("Warning: Could not save results file: %v\n", err)
+			}
+
+			fmt.Printf("Search results saved to %s/search_results.json\n", cacheManager.GetCacheDir())
+			for _, t := range tracks {
+				fmt.Printf("%s by %s [%s]\n", t.Name, t.Artist, t.Collection)
+			}
+			return
+		}
+
+		// Cache miss - perform actual search
 		tracks, err := itunes.SearchiTunesPlaylists(query)
 		if err != nil {
-			fmt.Println("Error:", err)
+			if errors.Is(err, itunes.ErrNoTracksFound) {
+				fmt.Println("No tracks found.")
+			} else {
+				fmt.Println("Error:", err)
+			}
 			return
 		}
 
 		if len(tracks) == 0 {
 			fmt.Println("No tracks found.")
-			// remove search results file if it exists
-			if _, err := os.Stat("itunes_search_results.json"); err == nil {
-				os.Remove("itunes_search_results.json")
-			}
 			return
 		}
 
-		// Store results in a file
-		file, err := os.Create("itunes_search_results.json")
-		if err != nil {
-			fmt.Println("Error creating search results file:", err)
-			return
-		}
-		defer file.Close()
-
-		encoder := json.NewEncoder(file)
-		encoder.SetIndent("", "  ")
-		if err := encoder.Encode(tracks); err != nil {
-			fmt.Println("Error writing search results:", err)
+		// Cache the results
+		if err := cacheManager.Set(query, tracks); err != nil {
+			fmt.Printf("Warning: Could not cache results: %v\n", err)
 		}
 
-		fmt.Println("Search results saved to itunes_search_results.json")
+		// Save to latest results file for backward compatibility
+		if err := cacheManager.SaveLatestResults(tracks); err != nil {
+			fmt.Printf("Warning: Could not save results file: %v\n", err)
+		}
+
+		fmt.Printf("Search results saved to %s/search_results.json\n", cacheManager.GetCacheDir())
 		for _, t := range tracks {
 			fmt.Printf("%s by %s [%s]\n", t.Name, t.Artist, t.Collection)
 		}

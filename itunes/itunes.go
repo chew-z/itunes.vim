@@ -4,12 +4,17 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
-	"runtime"
 	"time"
+)
+
+// Exported error variables for better error handling
+var (
+	ErrNoTracksFound = errors.New("no tracks found")
+	ErrScriptFailed  = errors.New("JXA script execution failed")
 )
 
 // Track describes one track from the script's output
@@ -21,39 +26,28 @@ type Track struct {
 	Artist     string `json:"artist"`
 }
 
-// getScriptPath returns the absolute path to a script file in the autoload directory
-func getScriptPath(scriptName string) (string, error) {
-	// Get the directory of the current source file
-	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		return "", fmt.Errorf("failed to get current file path")
-	}
-
-	// Go up to the project root (from itunes/itunes.go to project root)
-	projectRoot := filepath.Dir(filepath.Dir(currentFile))
-	scriptPath := filepath.Join(projectRoot, "autoload", scriptName)
-
-	// Check if the script file exists
-	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
-		return "", fmt.Errorf("script file not found: %s", scriptPath)
-	}
-
-	return scriptPath, nil
-}
-
-// SearchiTunesPlaylists runs the iTunes_Search2_fzf.js script and returns found tracks.
+// SearchiTunesPlaylists runs the embedded iTunes_Search2_fzf.js script and returns found tracks.
 func SearchiTunesPlaylists(query string) ([]Track, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	scriptPath, err := getScriptPath("iTunes_Search2_fzf.js")
+	// Create a temporary file with the embedded script
+	tempFile, err := os.CreateTemp("", "itunes_search_*.js")
 	if err != nil {
-		return nil, fmt.Errorf("failed to locate script: %w", err)
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
+
+	// Write the embedded script to the temp file
+	if _, err := tempFile.WriteString(searchScript); err != nil {
+		return nil, fmt.Errorf("failed to write script to temp file: %w", err)
+	}
+	tempFile.Close()
 
 	cmd := exec.CommandContext(
 		ctx,
-		"/usr/bin/env", "osascript", "-l", "JavaScript", scriptPath, query,
+		"/usr/bin/env", "osascript", "-l", "JavaScript", tempFile.Name(), query,
 	)
 
 	var stdout, stderr bytes.Buffer
@@ -65,10 +59,10 @@ func SearchiTunesPlaylists(query string) ([]Track, error) {
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			if exitError.ExitCode() == 1 {
-				return nil, fmt.Errorf("No tracks found. Script debug output:\n%s", stderr.String())
+				return nil, ErrNoTracksFound
 			}
 		}
-		return nil, fmt.Errorf("failed to run iTunes_Search2_fzf.js with error: %w\nScript error: %s", err, stderr.String())
+		return nil, fmt.Errorf("%w: %s", ErrScriptFailed, stderr.String())
 	}
 
 	out := stdout.Bytes()
@@ -83,18 +77,27 @@ func SearchiTunesPlaylists(query string) ([]Track, error) {
 	return tracks, nil
 }
 
-// PlayPlaylistTrack runs iTunes_Play_Playlist_Track.js to play a playlist or track.
+// PlayPlaylistTrack runs the embedded iTunes_Play_Playlist_Track.js script to play a playlist or track.
 // If trackName is "", only the playlist will play.
 func PlayPlaylistTrack(playlistName, trackName string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	scriptPath, err := getScriptPath("iTunes_Play_Playlist_Track.js")
+	// Create a temporary file with the embedded script
+	tempFile, err := os.CreateTemp("", "itunes_play_*.js")
 	if err != nil {
-		return fmt.Errorf("failed to locate script: %w", err)
+		return fmt.Errorf("failed to create temp file: %w", err)
 	}
+	defer os.Remove(tempFile.Name())
+	defer tempFile.Close()
 
-	args := []string{"-l", "JavaScript", scriptPath, playlistName}
+	// Write the embedded script to the temp file
+	if _, err := tempFile.WriteString(playScript); err != nil {
+		return fmt.Errorf("failed to write script to temp file: %w", err)
+	}
+	tempFile.Close()
+
+	args := []string{"-l", "JavaScript", tempFile.Name(), playlistName}
 	if trackName != "" {
 		args = append(args, trackName)
 	}
@@ -105,7 +108,7 @@ func PlayPlaylistTrack(playlistName, trackName string) error {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("osascript failed: %w, stderr: %s", err, stderr.String())
+		return fmt.Errorf("%w: %s", ErrScriptFailed, stderr.String())
 	}
 
 	return nil

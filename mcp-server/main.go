@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
@@ -12,8 +13,14 @@ import (
 	"github.com/mark3labs/mcp-go/server"
 )
 
+// Global cache manager for the MCP server session
+var cacheManager *itunes.CacheManager
+
 func main() {
-	// Create MCP server
+	// Initialize global cache manager
+	cacheManager = itunes.NewCacheManager()
+
+	// Create MCP server with tool capabilities
 	mcpServer := server.NewMCPServer(
 		"itunes-mcp",
 		"1.0.0",
@@ -46,6 +53,8 @@ func main() {
 	mcpServer.AddTool(searchTool, searchHandler)
 	mcpServer.AddTool(playTool, playHandler)
 
+	// TODO: Add MCP resources for cache access (implement later)
+
 	// Start stdio server
 	if err := server.ServeStdio(mcpServer); err != nil {
 		fmt.Printf("Server error: %v\n", err)
@@ -59,13 +68,28 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid query parameter: %v", err)), nil
 	}
 
+	// Check cache first
+	if cachedTracks, found := cacheManager.Get(query); found {
+		result, err := json.MarshalIndent(cachedTracks, "", "  ")
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal cached results: %v", err)), nil
+		}
+		return mcp.NewToolResultText(string(result)), nil
+	}
+
+	// Cache miss - perform actual search
 	tracks, err := itunes.SearchiTunesPlaylists(query)
 	if err != nil {
+		if errors.Is(err, itunes.ErrNoTracksFound) {
+			return mcp.NewToolResultText("No tracks found matching the query."), nil
+		}
 		return mcp.NewToolResultError(fmt.Sprintf("Search failed: %v", err)), nil
 	}
 
-	if len(tracks) == 0 {
-		return mcp.NewToolResultText("No tracks found matching the query."), nil
+	// Cache the results
+	if err := cacheManager.Set(query, tracks); err != nil {
+		// Log cache error but don't fail the request
+		fmt.Printf("Warning: Failed to cache search results: %v\n", err)
 	}
 
 	result, err := json.MarshalIndent(tracks, "", "  ")
@@ -93,6 +117,9 @@ func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 
 	err = itunes.PlayPlaylistTrack(playlist, track)
 	if err != nil {
+		if errors.Is(err, itunes.ErrScriptFailed) {
+			return mcp.NewToolResultError(fmt.Sprintf("Unable to control Apple Music: %v", err)), nil
+		}
 		return mcp.NewToolResultError(fmt.Sprintf("Playback failed: %v", err)), nil
 	}
 

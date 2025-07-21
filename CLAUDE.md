@@ -124,3 +124,59 @@ The MCP server exposes two tools for LLM integration:
 ### Usage with Claude Code
 
 Configure the MCP server in your Claude Code MCP settings to enable iTunes integration in conversations.
+
+## Caching System
+
+The iTunes integration includes a sophisticated caching system that dramatically improves performance for repeated searches.
+
+### Cache Architecture
+
+**Dual-Level Caching:**
+- **Memory Cache**: Fast in-memory storage using `github.com/patrickmn/go-cache`
+- **File Cache**: Persistent storage in `$TMPDIR/itunes-cache/` directory
+
+**Cache Structure:**
+```
+$TMPDIR/itunes-cache/
+├── search_results.json                    # Latest CLI search (backward compatibility)  
+└── searches/
+    ├── {hash1}.json                       # Individual cached searches
+    └── {hash2}.json                       # Query hash -> search results
+```
+
+### Cache Behavior
+
+**CLI Application:**
+- **First search**: Executes AppleScript, caches results, saves to `$TMPDIR`
+- **Repeated search**: Returns cached results instantly with "(Using cached results)" message
+- **Output location**: Moved from project directory to system temp directory
+
+**MCP Server:**
+- **First search**: Executes AppleScript, stores in memory + file cache
+- **Repeated search**: Returns cached results from memory (sub-millisecond response)
+- **Session persistence**: Memory cache survives for 10 minutes (configurable)
+- **Cross-session**: File cache survives server restarts
+
+### Cache Features
+
+**Performance:**
+- **Memory hits**: Near-instant response (~1ms vs ~2000ms for AppleScript)
+- **Query normalization**: "Coldplay", "coldplay", " COLDPLAY " all use same cache entry
+- **Automatic cleanup**: Expired entries removed automatically
+
+**Reliability:**
+- **Graceful degradation**: Cache failures don't break searches
+- **TTL expiration**: Default 10-minute cache lifetime
+- **Hash-based keys**: Consistent cache keys for same queries
+
+### Cache Configuration
+
+**Default Settings:**
+- **Memory TTL**: 10 minutes
+- **Cleanup interval**: 20 minutes  
+- **Cache location**: `$TMPDIR/itunes-cache/`
+
+**Environment Variables (Future):**
+- `ITUNES_CACHE_TTL`: Custom cache expiration time
+- `ITUNES_CACHE_DIR`: Custom cache directory location
+- `ITUNES_CACHE_DISABLE`: Disable caching entirely

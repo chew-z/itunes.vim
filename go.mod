@@ -2,7 +2,10 @@ module itunes
 
 go 1.24.4
 
-require github.com/mark3labs/mcp-go v0.34.0
+require (
+	github.com/mark3labs/mcp-go v0.34.0
+	github.com/patrickmn/go-cache v2.1.0+incompatible
+)
 
 require (
 	github.com/google/uuid v1.6.0 // indirect
