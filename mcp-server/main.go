@@ -46,33 +46,33 @@ func main() {
 
 	// Create search tool
 	searchTool := mcp.NewTool("search_itunes",
-		mcp.WithDescription("Search iTunes/Apple Music library for tracks"),
+		mcp.WithDescription("Searches the local iTunes/Apple Music library for tracks, artists, or albums."),
 		mcp.WithString("query",
 			mcp.Required(),
-			mcp.Description("Search query for tracks in the iTunes library"),
+			mcp.Description("The search term. Can be a track name, artist, album, or playlist."),
 		),
 	)
 
 	// Create play tool
 	playTool := mcp.NewTool("play_track",
-		mcp.WithDescription("Play a track in iTunes/Apple Music with proper context for continuous playback. Use track_id with either playlist (for user playlists) or album (for album playback). The `playlist` parameter now works with actual user-created playlists."),
+		mcp.WithDescription("Plays a track, playlist, or album. To play a specific track within a playlist or album, provide both the track identifier (track_id or track) and the context (playlist or album)."),
 		mcp.WithString("track_id",
-			mcp.Description("RECOMMENDED: Use the EXACT 'id' field value from search_itunes results. Most reliable method that avoids encoding/character issues."),
+			mcp.Description("The unique ID of the track from a search result. The most reliable way to play a specific track."),
 		),
 		mcp.WithString("playlist",
-			mcp.Description("For playlist context: Use the exact 'collection' field value or a value from the 'playlists' array. Provides playlist context so playback continues with next tracks in playlist."),
+			mcp.Description("The name of the playlist to play. If a track_id is also given, starts playback from that track within the playlist."),
 		),
 		mcp.WithString("album",
-			mcp.Description("For album context: Use the exact 'album' field value from search_itunes results. Provides album context so playback continues with next tracks in album."),
+			mcp.Description("The name of the album to play. If a track_id is also given, starts playback from that track within the album."),
 		),
 		mcp.WithString("track",
-			mcp.Description("FALLBACK: Use the EXACT 'name' field value from search_itunes results. Only use if track_id unavailable. Less reliable with complex names - prefer track_id."),
+			mcp.Description("The name of the track. Use as a fallback if track_id is not known."),
 		),
 	)
 
 	// Create refresh tool
 	refreshTool := mcp.NewTool("refresh_library",
-		mcp.WithDescription("Refresh the iTunes/Apple Music library cache. WARNING: This is a resource-intensive operation that takes 1-3 minutes for large libraries. Only use with explicit user approval and sparingly - typically only on first use or after significant library changes. Use search_itunes for normal operations as it uses cached data."),
+		mcp.WithDescription("Updates the local library cache from the Music app. This can take several minutes for large libraries. Run this only if your library has changed significantly."),
 	)
 
 	// Add tools to server

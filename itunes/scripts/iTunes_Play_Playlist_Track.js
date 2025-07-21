@@ -44,43 +44,17 @@ function run(argv) {
             return "ERROR: No playlist, album, track, or track ID specified. Usage: play [playlist] [album] [track] [trackId]"
         }
 
-        // PRIORITY 1: Direct ID-based track lookup (works everywhere)
-        if (trackId !== "") {
-            if (verbose) {
-                console.log("Attempting direct ID-based track lookup: " + trackId);
-            }
-            
-            try {
-                let tracksByID = music.tracks.whose({persistentID: trackId});
-                if (tracksByID.length > 0) {
-                    let foundTrack = tracksByID[0];
-                    if (verbose) {
-                        console.log("Found track by ID: " + foundTrack.name());
-                    }
-                    foundTrack.play();
-                    return "OK: Started playing track by ID: " + foundTrack.name();
-                }
-            } catch (e) {
-                if (verbose) {
-                    console.log("Direct ID lookup failed: " + e.message);
-                }
-            }
-        }
-
-        // PRIORITY 2: Playlist context playback
+        // PRIORITY 1: Playlist context playback
         if (playlistName !== "") {
             if (verbose) {
                 console.log("Attempting playlist-based playback: " + playlistName);
             }
             
             let playlist = null;
-            let playlists = music.playlists();
-            
-            for (let p of playlists) {
-                if (p.name() === playlistName) {
-                    playlist = p;
-                    break;
-                }
+            try {
+                playlist = music.playlists.byName(playlistName);
+            } catch (e) {
+                return "ERROR: Playlist not found: " + playlistName;
             }
             
             if (playlist) {
@@ -99,26 +73,25 @@ function run(argv) {
                 
                 // Try to find and play specific track within playlist
                 let foundTrack = null;
-                let playlistTracks = playlist.tracks();
                 
                 // Priority to ID lookup within playlist
                 if (trackId !== "") {
-                    for (let track of playlistTracks) {
-                        if (track.persistentID() === trackId) {
-                            foundTrack = track;
-                            break;
+                    try {
+                        let tracksByID = playlist.tracks.whose({persistentID: trackId});
+                        if (tracksByID.length > 0) {
+                            foundTrack = tracksByID[0];
                         }
-                    }
+                    } catch (e) { /* ignore if not found */ }
                 }
                 
                 // Fallback to name lookup within playlist
                 if (!foundTrack && trackName !== "") {
-                    for (let track of playlistTracks) {
-                        if (track.name.exists() && track.name() === trackName) {
-                            foundTrack = track;
-                            break;
+                    try {
+                        let tracksByName = playlist.tracks.whose({name: trackName});
+                        if (tracksByName.length > 0) {
+                            foundTrack = tracksByName[0];
                         }
-                    }
+                    } catch (e) { /* ignore if not found */ }
                 }
                 
                 if (foundTrack) {
@@ -127,20 +100,17 @@ function run(argv) {
                     }
                     // Proper sequence for context-aware playback
                     music.mute = true;
-                    playlist.reveal();
-                    playlist.play();
-                    foundTrack.play();
+                    playlist.play(); // Play the whole playlist to set the queue
+                    foundTrack.play(); // Immediately switch to the desired track
                     music.mute = false;
                     return "OK: Started playing track '" + foundTrack.name() + "' from playlist '" + playlistName + "'";
                 } else {
                     return "ERROR: Track not found in playlist '" + playlistName + "'";
                 }
-            } else {
-                return "ERROR: Playlist not found: " + playlistName;
             }
         }
 
-        // PRIORITY 3: Album context playback
+        // PRIORITY 2: Album context playback
         if (albumName !== "") {
             if (verbose) {
                 console.log("Attempting album-based playback: " + albumName);
@@ -148,80 +118,77 @@ function run(argv) {
             
             try {
                 let libraryPlaylist = music.libraryPlaylists[0];
-                let libraryTracks = libraryPlaylist.tracks();
-                let albumTracks = [];
                 let targetTrack = null;
-                
-                // Collect all tracks from this album
-                for (let i = 0; i < libraryTracks.length; i++) {
-                    let track = libraryTracks[i];
-                    if (track.album.exists() && track.album() === albumName) {
-                        albumTracks.push(track);
-                        
-                        // Check if this is our target track
-                        if (trackId !== "" && track.persistentID() === trackId) {
-                            targetTrack = track;
-                        } else if (trackName !== "" && track.name.exists() && track.name() === trackName) {
-                            targetTrack = track;
-                        }
+
+                // Find the target track first
+                if (trackId !== "") {
+                    let tracksByID = libraryPlaylist.tracks.whose({persistentID: trackId, album: albumName});
+                    if (tracksByID.length > 0) {
+                        targetTrack = tracksByID[0];
                     }
                 }
-                
-                if (albumTracks.length === 0) {
-                    return "ERROR: Album not found: " + albumName;
+                if (!targetTrack && trackName !== "") {
+                    let tracksByName = libraryPlaylist.tracks.whose({name: trackName, album: albumName});
+                    if (tracksByName.length > 0) {
+                        targetTrack = tracksByName[0];
+                    }
                 }
-                
-                // If no specific track requested, play first track of album
-                if (trackName === "" && trackId === "") {
+
+                // If a specific track is found, play it with album context
+                if (targetTrack) {
+                    if (verbose) {
+                        console.log("Found target track in album: " + targetTrack.name());
+                    }
+                    // To play a track in album context, we play the track itself.
+                    // The Music app should handle the "Up Next" queue automatically.
+                    targetTrack.play();
+                    return "OK: Started playing track '" + targetTrack.name() + "' from album '" + albumName + "'";
+                }
+
+                // If no specific track requested, or if track wasn't found, play the whole album
+                let albumTracks = libraryPlaylist.tracks.whose({album: albumName});
+                if (albumTracks.length > 0) {
                     if (verbose) {
                         console.log("Playing album from beginning: " + albumName);
                     }
                     albumTracks[0].play();
                     return "OK: Started playing album: " + albumName;
-                }
-                
-                if (targetTrack) {
-                    if (verbose) {
-                        console.log("Found " + albumTracks.length + " tracks in album, playing: " + targetTrack.name());
-                    }
-                    // Proper sequence for album context playback
-                    music.mute = true;
-                    // Start with first track of album to establish context
-                    albumTracks[0].play();
-                    // Then jump to target track
-                    targetTrack.play();
-                    music.mute = false;
-                    return "OK: Started playing track '" + targetTrack.name() + "' from album '" + albumName + "'";
                 } else {
-                    return "ERROR: Track not found in album '" + albumName + "'";
+                    return "ERROR: Album not found: " + albumName;
                 }
             } catch (e) {
                 return "ERROR: Album playback failed: " + e.message;
             }
         }
 
-        // FALLBACK: Individual track lookup without context
-        if (trackName !== "" || trackId !== "") {
+        // PRIORITY 3: Fallback to individual track lookup without context
+        if (trackId !== "" || trackName !== "") {
+            if (verbose) {
+                console.log("Attempting fallback individual track lookup.");
+            }
             try {
-                let libraryPlaylist = music.libraryPlaylists[0];
-                let libraryTracks = libraryPlaylist.tracks();
-                
-                if (trackName !== "" && trackId === "") {
-                    // Name-based individual track search
-                    for (let i = 0; i < libraryTracks.length; i++) {
-                        let track = libraryTracks[i];
-                        if (track.name.exists() && track.name() === trackName) {
-                            if (verbose) {
-                                console.log("Found individual track by name: " + trackName);
-                            }
-                            track.play();
-                            return "OK: Started playing individual track: " + trackName;
-                        }
+                let foundTrack = null;
+                if (trackId !== "") {
+                    let tracksByID = music.tracks.whose({persistentID: trackId});
+                    if (tracksByID.length > 0) {
+                        foundTrack = tracksByID[0];
                     }
-                    return "ERROR: Track not found in library by name: " + trackName;
-                } else if (trackId !== "") {
-                    // ID lookup already failed above - this shouldn't happen
-                    return "ERROR: Track not found by ID: " + trackId;
+                }
+                if (!foundTrack && trackName !== "") {
+                    let tracksByName = music.tracks.whose({name: trackName});
+                    if (tracksByName.length > 0) {
+                        foundTrack = tracksByName[0];
+                    }
+                }
+
+                if (foundTrack) {
+                    if (verbose) {
+                        console.log("Found individual track: " + foundTrack.name());
+                    }
+                    foundTrack.play();
+                    return "OK: Started playing individual track: " + foundTrack.name();
+                } else {
+                    return "ERROR: Track not found in library.";
                 }
             } catch (e) {
                 return "ERROR: Individual track search failed: " + e.message;
