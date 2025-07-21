@@ -123,7 +123,7 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	}
 
 	// Cache miss - perform actual search
-	tracks, err := itunes.SearchiTunesPlaylists(query)
+	tracks, err := itunes.SearchTracksFromCache(query)
 	if err != nil {
 		if errors.Is(err, itunes.ErrNoTracksFound) {
 			return mcp.NewToolResultText("No tracks found matching the query."), nil

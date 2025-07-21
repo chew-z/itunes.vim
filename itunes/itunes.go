@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -25,69 +26,6 @@ type Track struct {
 	Album      string `json:"album"`
 	Collection string `json:"collection"`
 	Artist     string `json:"artist"`
-}
-
-// SearchiTunesPlaylists runs the embedded iTunes_Search2_fzf.js script and returns found tracks.
-func SearchiTunesPlaylists(query string) ([]Track, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
-	// Create a temporary file with the embedded script
-	tempFile, err := os.CreateTemp("", "itunes_search_*.js")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer os.Remove(tempFile.Name())
-	defer tempFile.Close()
-
-	// Write the embedded script to the temp file
-	if _, err := tempFile.WriteString(searchScript); err != nil {
-		return nil, fmt.Errorf("failed to write script to temp file: %w", err)
-	}
-	tempFile.Close()
-
-	cmd := exec.CommandContext(
-		ctx,
-		"/usr/bin/env", "osascript", "-l", "JavaScript", tempFile.Name(), query,
-	)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err = cmd.Run()
-
-	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
-			if exitError.ExitCode() == 1 {
-				return nil, ErrNoTracksFound
-			}
-		}
-		return nil, fmt.Errorf("%w: %s", ErrScriptFailed, stderr.String())
-	}
-
-	responseJSON := stdout.Bytes()
-	if len(responseJSON) == 0 {
-		return []Track{}, nil
-	}
-
-	// Parse the structured response
-	var response struct {
-		Status  string  `json:"status"`
-		Data    []Track `json:"data"`
-		Message string  `json:"message"`
-		Error   string  `json:"error"`
-	}
-
-	if err := json.Unmarshal(responseJSON, &response); err != nil {
-		return nil, fmt.Errorf("invalid JSON output: %w", err)
-	}
-
-	if response.Status == "error" {
-		return nil, fmt.Errorf("search script error: %s", response.Message)
-	}
-
-	return response.Data, nil
 }
 
 // PlayPlaylistTrack runs the embedded iTunes_Play_Playlist_Track.js script to play a playlist or track.
@@ -147,6 +85,68 @@ func PlayPlaylistTrack(playlistName, trackName string) error {
 	}
 
 	return nil
+}
+
+// SearchTracksFromCache searches the iTunes library cache directly without using JavaScript.
+// This is much faster than SearchiTunesPlaylists as it eliminates the osascript overhead.
+func SearchTracksFromCache(query string) ([]Track, error) {
+	if query == "" {
+		return nil, errors.New("search query cannot be empty")
+	}
+
+	// Read the library cache file
+	cacheFile := filepath.Join(os.TempDir(), "itunes-cache", "library.json")
+	data, err := os.ReadFile(cacheFile)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, errors.New("library cache not found - please run refresh_library first")
+		}
+		return nil, fmt.Errorf("failed to read library cache: %w", err)
+	}
+
+	var allTracks []Track
+	if err := json.Unmarshal(data, &allTracks); err != nil {
+		return nil, fmt.Errorf("failed to parse library cache: %w", err)
+	}
+
+	// Perform search with same logic as iTunes_Search2_fzf.js
+	var exactMatches []Track
+	var partialMatches []Track
+	queryLower := strings.ToLower(strings.TrimSpace(query))
+
+	for _, track := range allTracks {
+		trackName := strings.ToLower(track.Name)
+		artistName := strings.ToLower(track.Artist)
+		albumName := strings.ToLower(track.Album)
+		collectionName := strings.ToLower(track.Collection)
+
+		// Check for exact matches first (higher priority)
+		if trackName == queryLower || artistName == queryLower {
+			exactMatches = append(exactMatches, track)
+		} else {
+			// Check partial matches in all searchable fields
+			searchableText := strings.Join([]string{collectionName, trackName, artistName, albumName}, " ")
+			if strings.Contains(searchableText, queryLower) {
+				partialMatches = append(partialMatches, track)
+			}
+		}
+	}
+
+	// Combine results with exact matches first, limit to 15 total
+	matches := exactMatches
+	if len(matches) < 15 {
+		remaining := 15 - len(matches)
+		if remaining > len(partialMatches) {
+			remaining = len(partialMatches)
+		}
+		matches = append(matches, partialMatches[:remaining]...)
+	}
+
+	if len(matches) == 0 {
+		return nil, ErrNoTracksFound
+	}
+
+	return matches, nil
 }
 
 // RefreshLibraryCache runs the embedded iTunes_Refresh_Library.js script to build a comprehensive library cache.

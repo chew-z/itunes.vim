@@ -48,7 +48,7 @@ func main() {
 		}
 
 		// Cache miss - perform actual search
-		tracks, err := itunes.SearchiTunesPlaylists(query)
+		tracks, err := itunes.SearchTracksFromCache(query)
 		if err != nil {
 			if errors.Is(err, itunes.ErrNoTracksFound) {
 				fmt.Println("No tracks found.")
