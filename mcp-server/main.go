@@ -55,19 +55,18 @@ func main() {
 
 	// Create play tool
 	playTool := mcp.NewTool("play_track",
-		mcp.WithDescription("Play a track or album in iTunes/Apple Music. Use the 'collection' field from search results as the playlist parameter."),
+		mcp.WithDescription("Play a track or album in iTunes/Apple Music. If playlist is provided, plays within that context. If playlist is empty or not found, plays the individual track directly."),
 		mcp.WithString("playlist",
-			mcp.Required(),
-			mcp.Description("Collection name from search results (album, playlist, or compilation name). Use the 'collection' field value from search_itunes results."),
+			mcp.Description("Optional playlist/collection name from search_itunes results. Use the exact 'collection' field value. If empty or playlist not found, will play individual track directly."),
 		),
 		mcp.WithString("track",
-			mcp.Description("Optional specific track name to play within the collection. If omitted, plays the entire collection."),
+			mcp.Description("Optional specific track name to play. If playlist is provided, plays this track within that playlist. If no playlist, searches library for this track name and plays it directly."),
 		),
 	)
 
 	// Create refresh tool
 	refreshTool := mcp.NewTool("refresh_library",
-		mcp.WithDescription("Refresh the iTunes/Apple Music library cache. This scans all playlists and tracks to build a comprehensive searchable cache. Should be run when library changes or on first use. Takes 1-3 minutes for large libraries."),
+		mcp.WithDescription("Refresh the iTunes/Apple Music library cache. WARNING: This is a resource-intensive operation that takes 1-3 minutes for large libraries. Only use with explicit user approval and sparingly - typically only on first use or after significant library changes. Use search_itunes for normal operations as it uses cached data."),
 	)
 
 	// Add tools to server
@@ -152,15 +151,18 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 }
 
 func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	playlist, err := request.RequireString("playlist")
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Invalid playlist parameter: %v", err)), nil
-	}
+	// Playlist is now optional
+	playlist := request.GetString("playlist", "")
 
 	// Track is optional
 	track := request.GetString("track", "")
 
-	err = itunes.PlayPlaylistTrack(playlist, track)
+	// Need at least one parameter
+	if playlist == "" && track == "" {
+		return mcp.NewToolResultError("Either playlist or track parameter must be provided"), nil
+	}
+
+	err := itunes.PlayPlaylistTrack(playlist, track)
 	if err != nil {
 		if errors.Is(err, itunes.ErrScriptFailed) {
 			return mcp.NewToolResultError(fmt.Sprintf("Unable to control Apple Music: %v", err)), nil
@@ -168,10 +170,12 @@ func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 		return mcp.NewToolResultError(fmt.Sprintf("Playback failed: %v", err)), nil
 	}
 
-	if track != "" {
+	if playlist != "" && track != "" {
 		return mcp.NewToolResultText(fmt.Sprintf("Started playing track '%s' from playlist '%s'", track, playlist)), nil
-	} else {
+	} else if playlist != "" {
 		return mcp.NewToolResultText(fmt.Sprintf("Started playing playlist '%s'", playlist)), nil
+	} else {
+		return mcp.NewToolResultText(fmt.Sprintf("Started playing track: %s", track)), nil
 	}
 }
 

@@ -22,36 +22,72 @@ function run(argv) {
     if (verbose) {
         console.log(argv)
     } // print arguments
-    if (argv.length == 0) {
-        if (verbose) {
-            console.log('Usage: play playlist [ track ]')
-        }
-        return JSON.stringify({ status: "error", message: "No playlist specified. Usage: play playlist [ track ]" })
-    }
     try {
-        let playlistName = argv[0];
+        let playlistName = argv.length > 0 ? argv[0] : "";
         let trackName = argv.length > 1 ? argv.slice(1).join(' ') : "";
         
         if (verbose) {
             console.log("Playlist: " + playlistName + ", Track: " + trackName);
         }
 
-        // Find the playlist by name
+        // If no arguments provided at all, that's an error
+        if (playlistName === "" && trackName === "") {
+            return JSON.stringify({ status: "error", message: "No playlist or track specified. Usage: play [playlist] [track]" })
+        }
+
+        // Find the playlist by name (if playlist name provided)
         let playlist = null;
-        let playlists = music.playlists();
-        
-        for (let p of playlists) {
-            if (p.name() === playlistName) {
-                playlist = p;
-                break;
+        if (playlistName !== "") {
+            let playlists = music.playlists();
+            
+            for (let p of playlists) {
+                if (p.name() === playlistName) {
+                    playlist = p;
+                    break;
+                }
             }
         }
         
+        // If no playlist found (either not provided or doesn't exist), try direct track playback
         if (!playlist) {
-            if (verbose) {
-                console.log("Playlist not found: " + playlistName);
+            if (trackName === "") {
+                // If we have a playlist name but no playlist found, and no track name
+                if (playlistName !== "") {
+                    return JSON.stringify({ status: "error", message: "Playlist not found: " + playlistName })
+                } else {
+                    return JSON.stringify({ status: "error", message: "No playlist or track specified" })
+                }
             }
-            return JSON.stringify({ status: "error", message: "Playlist not found: " + playlistName })
+            
+            // Try to find and play the track directly from the entire library
+            if (verbose) {
+                console.log("No playlist found, searching for track directly: " + trackName);
+            }
+            
+            let foundTrack = null;
+            let allPlaylists = music.playlists();
+            
+            // Search through all playlists for the track
+            for (let p of allPlaylists) {
+                let tracks = p.tracks();
+                for (let track of tracks) {
+                    if (track.name.exists() && track.name() === trackName) {
+                        foundTrack = track;
+                        break;
+                    }
+                }
+                if (foundTrack) break;
+            }
+            
+            if (foundTrack) {
+                if (verbose) {
+                    console.log("Found track in library, playing directly: " + foundTrack.name());
+                }
+                foundTrack.play();
+                return JSON.stringify({ status: "success", message: "Started playing track: " + trackName })
+            } else {
+                return JSON.stringify({ status: "error", message: "Track not found in library: " + trackName })
+            }
         }
         
         // If no specific track is requested, play the entire playlist

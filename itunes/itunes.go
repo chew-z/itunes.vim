@@ -110,7 +110,12 @@ func PlayPlaylistTrack(playlistName, trackName string) error {
 	}
 	tempFile.Close()
 
-	args := []string{"-l", "JavaScript", tempFile.Name(), playlistName}
+	args := []string{"-l", "JavaScript", tempFile.Name()}
+
+	// Always pass playlist name (empty string if not provided)
+	args = append(args, playlistName)
+
+	// Add track name if provided
 	if trackName != "" {
 		args = append(args, trackName)
 	}

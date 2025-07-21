@@ -115,12 +115,14 @@ The MCP server exposes two tools for LLM integration:
 
 ### `play_track`
 
-- **Description**: Play a track or album in iTunes/Apple Music
+- **Description**: Play a track or album in iTunes/Apple Music. Can play within playlist context or individual tracks directly.
 - **Parameters**:
-    - `playlist` (string, required): Collection name from search results (album, playlist, or compilation). Use the `collection` field value from `search_itunes` results.
-    - `track` (string, optional): Optional specific track name to play within the collection. If omitted, plays the entire collection.
+    - `playlist` (string, optional): Collection name from search results. Use the exact `collection` field value from `search_itunes` results. If empty or playlist not found, falls back to direct track playback.
+    - `track` (string, optional): Specific track name to play. If playlist provided, plays track within that context. If no playlist, searches library for this track and plays it directly.
 - **Returns**: Text confirmation of playback status
-- **Usage Example**: After searching for "City Lights", use the `collection` value "City Lights - Single" as the playlist parameter
+- **Usage Examples**: 
+  - Normal playlist context: `{"playlist": "City Lights - Single", "track": "City Lights"}`
+  - Direct track playback: `{"track": "SomaFM: Lush (#1): Sensuous..."}`
 
 ### Usage with Claude Code
 
@@ -142,7 +144,9 @@ Configure the MCP server in your Claude Code MCP settings to enable iTunes integ
    Result: "Started playing track 'City Lights' from playlist 'City Lights - Single'"
    ```
 
-**Key Point**: Always use the `collection` field value from search results as the `playlist` parameter in `play_track`.
+**Key Points**: 
+- For playlist context: Use the exact `collection` field value from search results
+- For tracks with empty `collection` fields: Use direct track playback with just the `track` parameter
 
 ## Recent Critical Fix: Playlist Context Playback (2025-01-21)
 
@@ -212,6 +216,144 @@ foundTrack.play();      // Play specific track within playlist
 - **Integration**: ✅ Go embed system correctly includes updated JavaScript
 
 **Key Point**: Always use the `collection` field value from search results as the `playlist` parameter in `play_track`.
+
+## Critical Fix: Empty Collection Field Handling (2025-01-21)
+
+### Problem: Internet Radio Streams and Empty Collection Fields
+
+**Issue Identified:**
+- Tracks like SomaFM internet radio streams have empty `collection` fields (no album names)
+- MCP tool originally required `playlist` parameter, causing failures for these tracks
+- Error: "Playlist not found: SomaFM: Groove Salad Classic (#1)"
+
+**Root Cause Analysis:**
+1. **Library Refresh Logic**: `collection` field set to `albumName`, which is empty for internet radio streams
+2. **MCP Tool Constraint**: `playlist` parameter was marked as `mcp.Required()`
+3. **Argument Passing Issue**: Go function wasn't correctly handling empty playlist parameters when calling JXA scripts
+
+### Solution: Optional Playlist Parameter with Direct Track Playback
+
+**Implementation Changes (2025-01-21):**
+
+#### 1. MCP Tool Definition Updates (`mcp-server/main.go`)
+```go
+// Before: playlist parameter was required
+mcp.WithString("playlist", mcp.Required(), ...)
+
+// After: playlist parameter is optional
+mcp.WithString("playlist", 
+    mcp.Description("Optional playlist/collection name... If empty or playlist not found, will play individual track directly."))
+```
+
+#### 2. Enhanced Play Script Logic (Both `autoload/` and `itunes/scripts/` versions)
+```javascript
+// New fallback behavior when playlist not found:
+if (!playlist) {
+    if (trackName === "") {
+        // Error if neither playlist nor track provided
+        return JSON.stringify({ status: "error", message: "No playlist or track specified" })
+    }
+    
+    // Search entire library for the track and play directly
+    let foundTrack = null;
+    let allPlaylists = music.playlists();
+    
+    for (let p of allPlaylists) {
+        let tracks = p.tracks();
+        for (let track of tracks) {
+            if (track.name.exists() && track.name() === trackName) {
+                foundTrack = track;
+                break;
+            }
+        }
+        if (foundTrack) break;
+    }
+    
+    if (foundTrack) {
+        foundTrack.play(); // Direct track playback
+        return JSON.stringify({ status: "success", message: "Started playing track: " + trackName })
+    }
+}
+```
+
+#### 3. Go Function Argument Handling Fix (`itunes/itunes.go`)
+```go
+// Fixed argument passing to always include playlist parameter (even if empty)
+args := []string{"-l", "JavaScript", tempFile.Name()}
+
+// Always pass playlist name (empty string if not provided) 
+args = append(args, playlistName)
+
+// Add track name if provided
+if trackName != "" {
+    args = append(args, trackName)
+}
+```
+
+**Before Fix:** Empty playlist wasn't passed as argument, causing script to misinterpret parameters
+**After Fix:** Empty string passed as playlist argument, allowing script to handle fallback correctly
+
+### Usage Patterns
+
+**Normal Playlist Context (existing behavior):**
+```json
+{
+  "playlist": "City Lights - Single",
+  "track": "City Lights"
+}
+```
+
+**Direct Track Playback (new fallback for empty collections):**
+```json
+{
+  "track": "SomaFM: Lush (#1): Sensuous and mellow female vocals, many with an electronic influence."
+}
+```
+
+**Empty Collection Handling:**
+```json
+// Search result with empty collection
+{
+  "id": "59286",
+  "name": "SomaFM: Groove Salad (#1): A nicely chilled plate of ambient/downtempo beats and grooves.",
+  "album": "",
+  "collection": "",  // Empty - no album context
+  "artist": ""
+}
+
+// LLM can now play directly:
+{
+  "track": "SomaFM: Groove Salad (#1): A nicely chilled plate of ambient/downtempo beats and grooves."
+}
+```
+
+### Files Modified
+
+1. **`mcp-server/main.go`** - Made playlist parameter optional, updated descriptions
+2. **`itunes/itunes.go`** - Fixed argument passing to JXA scripts for empty playlist parameters
+3. **`itunes/scripts/iTunes_Play_Playlist_Track.js`** - Added direct track playback fallback logic
+4. **`autoload/iTunes_Play_Playlist_Track.js`** - Same fallback logic for standalone usage
+
+### Testing Results
+
+**Before Fix:**
+- SomaFM tracks: ❌ "Playlist not found" errors
+- Required playlist parameter caused failures for tracks without album context
+
+**After Fix:**
+- SomaFM tracks: ✅ Play successfully using direct track playback
+- Normal tracks: ✅ Continue to work with playlist context when available
+- Graceful fallback: ✅ Automatically switches between playlist and direct playback modes
+
+### Error Handling Improvements
+
+**Better error messages for different scenarios:**
+- Both parameters empty: "No playlist or track specified"
+- Playlist not found, no track: "Playlist not found: [name]"
+- Track not found anywhere: "Track not found in library: [name]"
+- Success with direct playback: "Started playing track: [name]"
+
+This fix ensures **universal playability** - every track returned by `search_itunes` can now be played, regardless of whether it has playlist/album context.
 
 ## Critical JavaScript/JXA Script Fixes (2025-01-21)
 
