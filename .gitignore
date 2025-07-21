@@ -1,0 +1,11 @@
+bin/**
+.env
+go.sum
+.aider*
+CONVENTIONS.md
+run_*
+
+.claude/**
+.gemini/**
+.repomix/**
+.vscode/**
