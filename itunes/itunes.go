@@ -29,8 +29,8 @@ type Track struct {
 }
 
 // PlayPlaylistTrack runs the embedded iTunes_Play_Playlist_Track.js script to play a playlist or track.
-// If trackName is "", only the playlist will play.
-func PlayPlaylistTrack(playlistName, trackName string) error {
+// If trackName is "", only the playlist will play. If trackID is provided, it takes priority over trackName.
+func PlayPlaylistTrack(playlistName, trackName, trackID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -53,10 +53,11 @@ func PlayPlaylistTrack(playlistName, trackName string) error {
 	// Always pass playlist name (empty string if not provided)
 	args = append(args, playlistName)
 
-	// Add track name if provided
-	if trackName != "" {
-		args = append(args, trackName)
-	}
+	// Always pass track name (empty string if not provided)
+	args = append(args, trackName)
+
+	// Always pass track ID (empty string if not provided) - script prioritizes this
+	args = append(args, trackID)
 
 	cmd := exec.CommandContext(ctx, "osascript", args...)
 
@@ -68,23 +69,41 @@ func PlayPlaylistTrack(playlistName, trackName string) error {
 		return fmt.Errorf("%w: %s", ErrScriptFailed, stderr.String())
 	}
 
-	// Parse the structured response
-	responseJSON := stdout.Bytes()
-	if len(responseJSON) > 0 {
-		var response struct {
-			Status  string `json:"status"`
-			Message string `json:"message"`
-			Error   string `json:"error"`
-		}
-
-		if err := json.Unmarshal(responseJSON, &response); err == nil {
-			if response.Status == "error" {
-				return fmt.Errorf("play script error: %s", response.Message)
-			}
-		}
+	// Parse the new structured response format
+	response := strings.TrimSpace(stdout.String())
+	if response == "" {
+		return errors.New("play script returned no output")
 	}
 
-	return nil
+	// Check for structured error response
+	if strings.HasPrefix(response, "ERROR:") {
+		errorMsg := strings.TrimPrefix(response, "ERROR:")
+		errorMsg = strings.TrimSpace(errorMsg)
+		return fmt.Errorf("play script error: %s", errorMsg)
+	}
+
+	// Check for success response
+	if strings.HasPrefix(response, "OK:") {
+		// Success - no error
+		return nil
+	}
+
+	// Fallback: try to parse old JSON format for backward compatibility
+	var jsonResponse struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+		Error   string `json:"error"`
+	}
+
+	if err := json.Unmarshal(stdout.Bytes(), &jsonResponse); err == nil {
+		if jsonResponse.Status == "error" {
+			return fmt.Errorf("play script error: %s", jsonResponse.Message)
+		}
+		return nil
+	}
+
+	// Unknown response format
+	return fmt.Errorf("unexpected play script response: %s", response)
 }
 
 // SearchTracksFromCache searches the iTunes library cache directly without using JavaScript.

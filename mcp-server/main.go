@@ -55,12 +55,15 @@ func main() {
 
 	// Create play tool
 	playTool := mcp.NewTool("play_track",
-		mcp.WithDescription("Play a track or album in iTunes/Apple Music. If playlist is provided, plays within that context. If playlist is empty or not found, plays the individual track directly."),
+		mcp.WithDescription("Play a track or album in iTunes/Apple Music. RECOMMENDED: Use track_id for reliable playback. Falls back to track name matching if ID not provided."),
+		mcp.WithString("track_id",
+			mcp.Description("RECOMMENDED: Use the EXACT 'id' field value from search_itunes results. This is the most reliable method for track identification and avoids encoding/character issues with complex track names."),
+		),
 		mcp.WithString("playlist",
 			mcp.Description("Optional playlist/collection name from search_itunes results. Use the exact 'collection' field value. If empty or playlist not found, will play individual track directly."),
 		),
 		mcp.WithString("track",
-			mcp.Description("REQUIRED: Use the EXACT 'name' field value from search_itunes results. Do not modify, truncate, or add suffixes to track names. Track name matching is case-sensitive and must be character-perfect. Example: if search returns 'name': 'SomaFM: SF 10-33', use exactly 'SomaFM: SF 10-33' here."),
+			mcp.Description("FALLBACK: Use the EXACT 'name' field value from search_itunes results. Only use this if track_id is not available. Track name matching is fragile with complex names - prefer track_id."),
 		),
 	)
 
@@ -151,18 +154,17 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 }
 
 func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	// Playlist is now optional
+	// Get parameters - track_id is preferred, then track name as fallback
+	trackID := request.GetString("track_id", "")
 	playlist := request.GetString("playlist", "")
-
-	// Track is optional
 	track := request.GetString("track", "")
 
-	// Need at least one parameter
-	if playlist == "" && track == "" {
-		return mcp.NewToolResultError("Either playlist or track parameter must be provided"), nil
+	// Need at least one track identifier
+	if playlist == "" && track == "" && trackID == "" {
+		return mcp.NewToolResultError("Either playlist, track, or track_id parameter must be provided"), nil
 	}
 
-	err := itunes.PlayPlaylistTrack(playlist, track)
+	err := itunes.PlayPlaylistTrack(playlist, track, trackID)
 	if err != nil {
 		if errors.Is(err, itunes.ErrScriptFailed) {
 			return mcp.NewToolResultError(fmt.Sprintf("Unable to control Apple Music: %v", err)), nil
@@ -170,13 +172,24 @@ func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 		return mcp.NewToolResultError(fmt.Sprintf("Playback failed: %v", err)), nil
 	}
 
-	if playlist != "" && track != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Started playing track '%s' from playlist '%s'", track, playlist)), nil
+	// Build success message based on what was used
+	if trackID != "" {
+		if playlist != "" {
+			return mcp.NewToolResultText(fmt.Sprintf("Started playing track ID '%s' from playlist '%s'", trackID, playlist)), nil
+		} else {
+			return mcp.NewToolResultText(fmt.Sprintf("Started playing track by ID: %s", trackID)), nil
+		}
+	} else if track != "" {
+		if playlist != "" {
+			return mcp.NewToolResultText(fmt.Sprintf("Started playing track '%s' from playlist '%s'", track, playlist)), nil
+		} else {
+			return mcp.NewToolResultText(fmt.Sprintf("Started playing track: %s", track)), nil
+		}
 	} else if playlist != "" {
 		return mcp.NewToolResultText(fmt.Sprintf("Started playing playlist '%s'", playlist)), nil
-	} else {
-		return mcp.NewToolResultText(fmt.Sprintf("Started playing track: %s", track)), nil
 	}
+
+	return mcp.NewToolResultText("Playback started"), nil
 }
 
 func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

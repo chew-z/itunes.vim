@@ -22,17 +22,24 @@ function run(argv) {
     if (verbose) {
         console.log(argv)
     } // print arguments
+    
     try {
+        // Updated argument parsing to support ID-based playback
+        // argv[0] = playlist name (optional)
+        // argv[1] = track name (optional)  
+        // argv[2] = track ID (optional, takes priority over name)
+        
         let playlistName = argv.length > 0 ? argv[0] : "";
-        let trackName = argv.length > 1 ? argv.slice(1).join(' ') : "";
+        let trackName = argv.length > 1 ? argv[1] : "";
+        let trackId = argv.length > 2 ? argv[2] : "";
         
         if (verbose) {
-            console.log("Playlist: " + playlistName + ", Track: " + trackName);
+            console.log("Playlist: " + playlistName + ", Track: " + trackName + ", ID: " + trackId);
         }
 
         // If no arguments provided at all, that's an error
-        if (playlistName === "" && trackName === "") {
-            return JSON.stringify({ status: "error", message: "No playlist or track specified. Usage: play [playlist] [track]" })
+        if (playlistName === "" && trackName === "" && trackId === "") {
+            return "ERROR: No playlist, track, or track ID specified. Usage: play [playlist] [track] [trackId]"
         }
 
         // Find the playlist by name (if playlist name provided)
@@ -48,83 +55,165 @@ function run(argv) {
             }
         }
         
-        // If no playlist found (either not provided or doesn't exist), try direct track playback
-        if (!playlist) {
-            if (trackName === "") {
-                // If we have a playlist name but no playlist found, and no track name
-                if (playlistName !== "") {
-                    return JSON.stringify({ status: "error", message: "Playlist not found: " + playlistName })
-                } else {
-                    return JSON.stringify({ status: "error", message: "No playlist or track specified" })
-                }
-            }
-            
-            // Try to find and play the track directly from the library
+        // PRIORITY 1: Try ID-based lookup if track ID provided (most reliable)
+        if (trackId !== "") {
             if (verbose) {
-                console.log("No playlist found, searching for track directly: " + trackName);
+                console.log("Attempting ID-based track lookup: " + trackId);
             }
             
-            let foundTrack = null;
-            
-            // Search main library playlist first (much faster than iterating all playlists)
-            let libraryPlaylist = music.libraryPlaylists[0];
-            let libraryTracks = libraryPlaylist.tracks();
-            
-            for (let i = 0; i < libraryTracks.length; i++) {
-                let track = libraryTracks[i];
-                if (track.name.exists() && track.name() === trackName) {
-                    foundTrack = track;
-                    break;
+            try {
+                // Direct ID-based lookup using Apple Music's persistent ID system
+                let tracksByID = music.tracks.whose({persistentID: trackId});
+                if (tracksByID.length > 0) {
+                    let foundTrack = tracksByID[0];
+                    if (verbose) {
+                        console.log("Found track by ID: " + foundTrack.name());
+                    }
+                    foundTrack.play();
+                    return "OK: Started playing track by ID: " + foundTrack.name();
                 }
-            }
-            
-            if (foundTrack) {
+                
                 if (verbose) {
-                    console.log("Found track in library, playing directly: " + foundTrack.name());
+                    console.log("No track found with ID: " + trackId);
                 }
-                foundTrack.play();
-                return JSON.stringify({ status: "success", message: "Started playing track: " + trackName })
-            } else {
-                return JSON.stringify({ status: "error", message: "Track not found in library: " + trackName })
+                
+                // If ID lookup failed, continue to name-based fallback
+            } catch (e) {
+                if (verbose) {
+                    console.log("ID lookup failed: " + e.message);
+                }
+                // Continue to fallback methods
+            }
+        }
+
+        // FALLBACK: If no playlist found (either not provided or doesn't exist), try name-based track lookup
+        if (!playlist) {
+            if (trackName === "" && trackId === "") {
+                // If we have a playlist name but no playlist found, and no track info
+                if (playlistName !== "") {
+                    return "ERROR: Playlist not found: " + playlistName;
+                } else {
+                    return "ERROR: No playlist, track name, or track ID specified";
+                }
+            }
+            
+            // Skip name-based search if we already tried ID lookup
+            if (trackName !== "" && trackId === "") {
+                if (verbose) {
+                    console.log("No playlist found, searching for track by name: " + trackName);
+                }
+                
+                let foundTrack = null;
+                
+                // Search main library playlist first (much faster than iterating all playlists)
+                let libraryPlaylist = music.libraryPlaylists[0];
+                let libraryTracks = libraryPlaylist.tracks();
+                
+                for (let i = 0; i < libraryTracks.length; i++) {
+                    let track = libraryTracks[i];
+                    if (track.name.exists() && track.name() === trackName) {
+                        foundTrack = track;
+                        break;
+                    }
+                }
+                
+                if (foundTrack) {
+                    if (verbose) {
+                        console.log("Found track by name: " + foundTrack.name());
+                    }
+                    foundTrack.play();
+                    return "OK: Started playing track by name: " + trackName;
+                } else {
+                    return "ERROR: Track not found in library by name: " + trackName;
+                }
+            } else if (trackId !== "") {
+                // ID lookup already failed above
+                return "ERROR: Track not found by ID: " + trackId;
             }
         }
         
-        // If no specific track is requested, play the entire playlist
-        if (trackName === "") {
-            if (verbose) {
-                console.log("Playing entire playlist: " + playlistName);
-            }
-            playlist.play();
-            return JSON.stringify({ status: "success", message: "Started playing playlist: " + playlistName })
-        } else {
-            // Find the specific track within the playlist
-            let tracks = playlist.tracks();
-            let foundTrack = null;
-            
-            for (let track of tracks) {
-                if (track.name.exists() && track.name() === trackName) {
-                    foundTrack = track;
-                    break;
+        // PLAYLIST CONTEXT PLAYBACK: If we have a playlist and either track name or ID
+        if (playlist) {
+            // If no specific track requested, play the entire playlist
+            if (trackName === "" && trackId === "") {
+                if (verbose) {
+                    console.log("Playing entire playlist: " + playlistName);
+                }
+                try {
+                    playlist.play();
+                    return "OK: Started playing playlist: " + playlistName;
+                } catch (e) {
+                    return "ERROR: Failed to play playlist '" + playlistName + "': " + e.message;
                 }
             }
             
-            if (foundTrack) {
-                if (verbose) {
-                    console.log("Found track in playlist, playing: " + foundTrack.name());
+            // PRIORITY 1: Try ID-based lookup within playlist
+            if (trackId !== "") {
+                try {
+                    let playlistTracks = playlist.tracks();
+                    let foundTrack = null;
+                    
+                    for (let track of playlistTracks) {
+                        if (track.persistentID() === trackId) {
+                            foundTrack = track;
+                            break;
+                        }
+                    }
+                    
+                    if (foundTrack) {
+                        if (verbose) {
+                            console.log("Found track by ID in playlist: " + foundTrack.name());
+                        }
+                        playlist.reveal();
+                        playlist.play();
+                        foundTrack.play();
+                        return "OK: Started playing track by ID '" + foundTrack.name() + "' from playlist '" + playlistName + "'";
+                    }
+                } catch (e) {
+                    if (verbose) {
+                        console.log("Playlist ID lookup failed: " + e.message);
+                    }
+                    // Continue to name-based fallback
                 }
-                // Play the playlist first to set context, then play the specific track
-                playlist.reveal();
-                playlist.play();
-                foundTrack.play();
-                return JSON.stringify({ status: "success", message: "Started playing track '" + trackName + "' from playlist '" + playlistName + "'" })
-            } else {
-                if (verbose) {
-                    console.log("Track not found in playlist: " + trackName);
+            }
+            
+            // FALLBACK: Name-based lookup within playlist
+            if (trackName !== "") {
+                try {
+                    let tracks = playlist.tracks();
+                    let foundTrack = null;
+                    
+                    for (let track of tracks) {
+                        if (track.name.exists() && track.name() === trackName) {
+                            foundTrack = track;
+                            break;
+                        }
+                    }
+                    
+                    if (foundTrack) {
+                        if (verbose) {
+                            console.log("Found track by name in playlist: " + foundTrack.name());
+                        }
+                        playlist.reveal();
+                        playlist.play();
+                        foundTrack.play();
+                        return "OK: Started playing track by name '" + trackName + "' from playlist '" + playlistName + "'";
+                    } else {
+                        return "ERROR: Track not found in playlist '" + playlistName + "' by name: " + trackName;
+                    }
+                } catch (e) {
+                    return "ERROR: Failed to search playlist '" + playlistName + "': " + e.message;
                 }
-                return JSON.stringify({ status: "error", message: "Track not found in playlist: " + trackName })
+            }
+            
+            // If we have playlist but track lookup failed
+            if (trackId !== "") {
+                return "ERROR: Track not found in playlist '" + playlistName + "' by ID: " + trackId;
             }
         }
+        
+        return "ERROR: Unable to process playback request";
     } catch (e) {
-        return JSON.stringify({ status: "error", message: "Script error: " + e.message, error: e.name })
+        return "ERROR: Script execution failed: " + e.message;
     }
 }

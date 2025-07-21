@@ -39,7 +39,7 @@ function run(argv) {
                 }
                 
                 allTracks.push({
-                    id: String(track.id()),
+                    id: track.persistentID(),
                     name: trackName,
                     album: albumName,
                     collection: albumName, // Using album as collection for consistent, non-duplicate results

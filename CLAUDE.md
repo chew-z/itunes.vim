@@ -76,11 +76,12 @@ type Track struct {
 - **Returns**: JSON array of matching tracks with metadata
 
 ### `play_track`
-- **Description**: Play a track or album. Can play within playlist context or individual tracks directly.
+- **Description**: Play a track or album using reliable ID-based lookup. RECOMMENDED: Use `track_id` for best reliability.
 - **Parameters**:
+  - `track_id` (string, optional): **RECOMMENDED** - Use the exact `id` field value from search results. Most reliable method that avoids encoding/character issues with complex track names.
   - `playlist` (string, optional): Collection name from search results. Use exact `collection` field value.
-  - `track` (string, optional): Specific track name to play. Use exact `name` field value from search results.
-- **Returns**: Text confirmation of playback status
+  - `track` (string, optional): **FALLBACK** - Use the exact `name` field value from search results. Only use if `track_id` not available. Less reliable with complex names.
+- **Returns**: Text confirmation of playback status with method used (ID vs name)
 
 ### `refresh_library`
 - **Description**: Refresh iTunes library cache (1-3 minutes for large libraries)
@@ -89,20 +90,26 @@ type Track struct {
 
 ## Usage Patterns
 
-**Normal playlist context:**
+**RECOMMENDED: ID-based playback (most reliable):**
 ```json
-{"playlist": "City Lights - Single", "track": "City Lights"}
+{"track_id": "B258396D58E2ECC9"}
 ```
 
-**Direct track playback (for tracks with empty collection fields):**
+**ID-based with playlist context:**
+```json
+{"playlist": "City Lights - Single", "track_id": "A1B2C3D4E5F6789A"}
+```
+
+**FALLBACK: Name-based playback (less reliable):**
 ```json
 {"track": "SomaFM: Lush (#1): Sensuous and mellow female vocals..."}
 ```
 
 **Key Requirements:**
-- Use EXACT field values from `search_itunes` results
-- For empty `collection` fields: use direct track playback with just `track` parameter
-- Track name matching is case-sensitive and character-perfect
+- **PREFERRED**: Use exact `id` field values from `search_itunes` results for maximum reliability
+- **FALLBACK**: Use exact `name` field values only when ID not available
+- For empty `collection` fields: ID-based lookup works universally
+- Track ID lookup is immune to encoding/character issues that affect name matching
 
 ## Caching System
 
@@ -125,7 +132,25 @@ type Track struct {
 
 ## Recent Critical Updates
 
-### 1. Native Go Search Implementation (2025-01-21)
+### 1. ID-Based Playback Implementation (2025-01-21)
+**Major Reliability Improvement**: Replaced fragile name-based track matching with persistent ID lookup.
+
+**Problem**: Intermittent playback failures with complex track names like "SomaFM: Sonic Universe (#1): Transcending..." due to encoding/shell parsing issues in the automation chain.
+
+**Solution**: Implemented ID-based track lookup using Apple Music's persistent IDs with name-based fallback.
+
+**Reliability Impact:**
+- **Before**: Fragile string matching through Go → osascript → shell → JavaScript chain (frequent failures)
+- **After**: Direct persistent ID lookup + structured error messages (consistent success)
+- **Result**: Eliminated intermittent playback failures, especially with complex track names
+
+**Files Modified:**
+- `itunes/scripts/iTunes_Play_Playlist_Track.js` - Added ID-based lookup as primary method, structured error responses
+- `itunes/scripts/iTunes_Refresh_Library.js` - Changed from `track.id()` to `track.persistentID()` for reliable IDs
+- `itunes/itunes.go` - Updated `PlayPlaylistTrack()` to accept trackID parameter, parse structured responses
+- `mcp-server/main.go` - Added `track_id` parameter to MCP tool, updated descriptions
+
+### 2. Native Go Search Implementation (2025-01-21)
 **Major Architecture Change**: Replaced JavaScript-based search with native Go implementation.
 
 **Problem**: `iTunes_Search2_fzf.js` script added unnecessary overhead - search didn't need Apple Music interaction, only JSON file reading.
@@ -178,10 +203,16 @@ type Track struct {
 
 ### Key Functions
 - `SearchTracksFromCache(query string) ([]Track, error)` - Native Go search (fastest)
-- `RefreshLibraryCache() error` - JXA script for library data extraction  
-- `PlayPlaylistTrack(playlist, track string) error` - JXA script for playback control
+- `RefreshLibraryCache() error` - JXA script for library data extraction with persistent IDs
+- `PlayPlaylistTrack(playlist, track, trackID string) error` - JXA script for ID-based playback control
 
-### Script Usage (Post-Consolidation)
-- `itunes/scripts/iTunes_Refresh_Library.js` - Library data extraction via JXA
-- `itunes/scripts/iTunes_Play_Playlist_Track.js` - Playback control via JXA
+### Script Usage (Post-Consolidation & ID Enhancement)
+- `itunes/scripts/iTunes_Refresh_Library.js` - Library data extraction via JXA using `track.persistentID()`
+- `itunes/scripts/iTunes_Play_Playlist_Track.js` - ID-based playback control via JXA with structured error responses
 - `autoload/` - Symlinks to `itunes/scripts/` + legacy Vim-specific files
+
+### Recent Architecture Improvements (2025-01-21)
+1. **Eliminated Intermittent Playback Failures**: Root cause was complex track names failing string matching through shell automation. Solution: Persistent ID lookup.
+2. **Enhanced Error Reporting**: Changed from empty/cryptic errors to structured `"ERROR: specific details"` and `"OK: success message"` responses.
+3. **Maintained Backward Compatibility**: Name-based playback still works as fallback when track ID not provided.
+4. **Updated Track Data Structure**: Search results now contain Apple Music persistent IDs instead of numeric database IDs for reliable cross-session track identification.
