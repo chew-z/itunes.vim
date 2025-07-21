@@ -59,24 +59,23 @@ function run(argv) {
                 }
             }
             
-            // Try to find and play the track directly from the entire library
+            // Try to find and play the track directly from the library
             if (verbose) {
                 console.log("No playlist found, searching for track directly: " + trackName);
             }
             
             let foundTrack = null;
-            let allPlaylists = music.playlists();
             
-            // Search through all playlists for the track
-            for (let p of allPlaylists) {
-                let tracks = p.tracks();
-                for (let track of tracks) {
-                    if (track.name.exists() && track.name() === trackName) {
-                        foundTrack = track;
-                        break;
-                    }
+            // Search main library playlist first (much faster than iterating all playlists)
+            let libraryPlaylist = music.libraryPlaylists[0];
+            let libraryTracks = libraryPlaylist.tracks();
+            
+            for (let i = 0; i < libraryTracks.length; i++) {
+                let track = libraryTracks[i];
+                if (track.name.exists() && track.name() === trackName) {
+                    foundTrack = track;
+                    break;
                 }
-                if (foundTrack) break;
             }
             
             if (foundTrack) {

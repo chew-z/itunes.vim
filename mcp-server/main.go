@@ -60,7 +60,7 @@ func main() {
 			mcp.Description("Optional playlist/collection name from search_itunes results. Use the exact 'collection' field value. If empty or playlist not found, will play individual track directly."),
 		),
 		mcp.WithString("track",
-			mcp.Description("Optional specific track name to play. If playlist is provided, plays this track within that playlist. If no playlist, searches library for this track name and plays it directly."),
+			mcp.Description("REQUIRED: Use the EXACT 'name' field value from search_itunes results. Do not modify, truncate, or add suffixes to track names. Track name matching is case-sensitive and must be character-perfect. Example: if search returns 'name': 'SomaFM: SF 10-33', use exactly 'SomaFM: SF 10-33' here."),
 		),
 	)
 
