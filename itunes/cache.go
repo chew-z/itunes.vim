@@ -267,6 +267,11 @@ func (cm *CacheManager) GetAllCachedQueries() []map[string]interface{} {
 			continue
 		}
 
+		// Skip expired entries for consistency
+		if time.Since(cacheEntry.Timestamp) > DefaultCacheExpiration {
+			continue
+		}
+
 		queries = append(queries, map[string]interface{}{
 			"query":       cacheEntry.Query,
 			"hash":        cacheEntry.Hash,

@@ -11,7 +11,9 @@ import (
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: itunes <command> [arguments]")
-		fmt.Println("Commands: search <query>, play <playlist> [track]")
+		fmt.Println("Commands:")
+		fmt.Println("  search <query>             - Search iTunes library for tracks")
+		fmt.Println("  play <collection> [track]  - Play album/playlist (use 'collection' field from search results)")
 		return
 	}
 
@@ -78,7 +80,8 @@ func main() {
 
 	case "play":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: itunes play <playlist> [track]")
+			fmt.Println("Usage: itunes play <collection> [track]")
+			fmt.Println("Use the 'collection' field from search results as the collection name")
 			return
 		}
 		playlist := os.Args[2]

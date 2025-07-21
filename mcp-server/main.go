@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"itunes/itunes"
 
@@ -20,6 +21,19 @@ var cacheManager *itunes.CacheManager
 func main() {
 	// Initialize global cache manager
 	cacheManager = itunes.NewCacheManager()
+
+	// Start periodic cleanup of expired cache files
+	go func() {
+		// Clean up immediately on startup
+		cacheManager.CleanupExpired()
+
+		// Then clean up every hour
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			cacheManager.CleanupExpired()
+		}
+	}()
 
 	// Create MCP server with tool and resource capabilities
 	mcpServer := server.NewMCPServer(
@@ -41,13 +55,13 @@ func main() {
 
 	// Create play tool
 	playTool := mcp.NewTool("play_track",
-		mcp.WithDescription("Play a playlist or specific track in iTunes/Apple Music"),
+		mcp.WithDescription("Play a track or album in iTunes/Apple Music. Use the 'collection' field from search results as the playlist parameter."),
 		mcp.WithString("playlist",
 			mcp.Required(),
-			mcp.Description("Name of the playlist to play"),
+			mcp.Description("Collection name from search results (album, playlist, or compilation name). Use the 'collection' field value from search_itunes results."),
 		),
 		mcp.WithString("track",
-			mcp.Description("Optional specific track name to play within the playlist"),
+			mcp.Description("Optional specific track name to play within the collection. If omitted, plays the entire collection."),
 		),
 	)
 
@@ -118,6 +132,11 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 		fmt.Printf("Warning: Failed to cache search results: %v\n", err)
 	}
 
+	// Also save for 'latest' resource (backward compatibility with CLI)
+	if err := cacheManager.SaveLatestResults(tracks); err != nil {
+		fmt.Printf("Warning: Failed to save latest search results: %v\n", err)
+	}
+
 	result, err := json.MarshalIndent(tracks, "", "  ")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal results: %v", err)), nil
@@ -132,14 +151,8 @@ func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid playlist parameter: %v", err)), nil
 	}
 
-	// Track is optional, so we use a different method to get it
-	args := request.GetArguments()
-	track := ""
-	if trackVal, exists := args["track"]; exists {
-		if trackStr, ok := trackVal.(string); ok {
-			track = trackStr
-		}
-	}
+	// Track is optional
+	track := request.GetString("track", "")
 
 	err = itunes.PlayPlaylistTrack(playlist, track)
 	if err != nil {
@@ -194,6 +207,10 @@ func latestResultsHandler(ctx context.Context, request mcp.ReadResourceRequest) 
 	latestFile := filepath.Join(cacheManager.GetCacheDir(), "search_results.json")
 	data, err := os.ReadFile(latestFile)
 	if err != nil {
+		if !os.IsNotExist(err) {
+			// Log other errors like permission issues
+			fmt.Printf("Warning: could not read latest results file: %v\n", err)
+		}
 		// If no latest results, return empty array
 		return []mcp.ResourceContents{
 			&mcp.TextResourceContents{

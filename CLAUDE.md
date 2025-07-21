@@ -115,15 +115,34 @@ The MCP server exposes two tools for LLM integration:
 
 ### `play_track`
 
-- **Description**: Play a playlist or specific track in iTunes/Apple Music
+- **Description**: Play a track or album in iTunes/Apple Music
 - **Parameters**:
-    - `playlist` (string, required): Name of the playlist to play
-    - `track` (string, optional): Optional specific track name to play within the playlist
+    - `playlist` (string, required): Collection name from search results (album, playlist, or compilation). Use the `collection` field value from `search_itunes` results.
+    - `track` (string, optional): Optional specific track name to play within the collection. If omitted, plays the entire collection.
 - **Returns**: Text confirmation of playback status
+- **Usage Example**: After searching for "City Lights", use the `collection` value "City Lights - Single" as the playlist parameter
 
 ### Usage with Claude Code
 
 Configure the MCP server in your Claude Code MCP settings to enable iTunes integration in conversations.
+
+#### Typical Workflow Example
+
+1. **Search for music**:
+   ```
+   User: "Search for City Lights by Roberto Bocchetti"
+   Claude: Uses search_itunes with query "City Lights Roberto Bocchetti"
+   Result: [{"name": "City Lights", "artist": "Roberto Bocchetti", "collection": "City Lights - Single", ...}]
+   ```
+
+2. **Play the track**:
+   ```
+   User: "Play that track"
+   Claude: Uses play_track with playlist="City Lights - Single" and track="City Lights"
+   Result: "Started playing track 'City Lights' from playlist 'City Lights - Single'"
+   ```
+
+**Key Point**: Always use the `collection` field value from search results as the `playlist` parameter in `play_track`.
 
 ## MCP Resources
 
