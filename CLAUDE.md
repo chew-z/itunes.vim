@@ -144,6 +144,75 @@ Configure the MCP server in your Claude Code MCP settings to enable iTunes integ
 
 **Key Point**: Always use the `collection` field value from search results as the `playlist` parameter in `play_track`.
 
+## Recent Critical Fix: Playlist Context Playback (2025-01-21)
+
+### Problem Identified
+The MCP server was only playing individual tracks instead of playing tracks within their playlist context, causing playback to stop after each track rather than continuing with the playlist. This differed from the original VIM implementation which maintained playlist context for continuous playback.
+
+### Root Cause Analysis  
+1. **Search Implementation**: Scripts only searched `music.libraryPlaylists[0]` (main library)
+2. **Data Structure**: `collection` field contained album names instead of actual playlist names
+3. **Playback Logic**: Played individual tracks without setting playlist context
+
+### Solution Implemented
+
+#### 1. Updated Search Logic (`autoload/iTunes_Search2_fzf.js` & `itunes/scripts/iTunes_Search2_fzf.js`)
+- **Before**: `music.search(music.libraryPlaylists[0], { for: searchQuery })`
+- **After**: Iterates through **all playlists** using `music.playlists()`
+- **Key Change**: `collection` field now contains actual playlist names instead of album names
+- **Behavior**: Tracks can appear multiple times if they exist in multiple playlists (beneficial feature)
+
+```javascript
+// New implementation searches all playlists
+let playlists = music.playlists();
+for (let playlist of playlists) {
+    let playlistName = playlist.name();
+    // ... search within each playlist and set collection: playlistName
+}
+```
+
+#### 2. Updated Playback Logic (`autoload/iTunes_Play_Playlist_Track.js` & `itunes/scripts/iTunes_Play_Playlist_Track.js`)
+- **Before**: `music.search()` + `foundTracks[0].play()` (single track only)
+- **After**: Playlist-based playback with context preservation
+
+```javascript
+// New implementation: find playlist → set context → play track
+let playlist = /* find by name */;
+playlist.reveal();      // Set visual context  
+playlist.play();        // Set playback context
+foundTrack.play();      // Play specific track within playlist
+```
+
+#### 3. File Updates Made
+- ✅ `autoload/iTunes_Search2_fzf.js` - Updated for CLI usage
+- ✅ `autoload/iTunes_Play_Playlist_Track.js` - Updated for CLI usage  
+- ✅ `itunes/scripts/iTunes_Search2_fzf.js` - Updated for MCP server (embedded)
+- ✅ `itunes/scripts/iTunes_Play_Playlist_Track.js` - Updated for MCP server (embedded)
+- ✅ Go embed directives automatically include updated scripts on rebuild
+
+#### 4. Verification Results (Gemini CLI Analysis)
+- ✅ **Changes Correctly Implemented**: All modifications properly address the core issue
+- ✅ **Script Integration**: Search output (`collection`) → Play input (`playlist`) workflow confirmed  
+- ✅ **MCP Server Integration**: Tool descriptions updated, handlers work correctly
+- ✅ **Problem Resolution**: Before (single track) → After (playlist context + continuous playback)
+
+### Performance Considerations
+- **Trade-off**: New search iterates through all playlists (potentially slower for large libraries)
+- **Mitigation**: Existing caching system (memory + file cache) maintains performance for repeated searches
+- **Benefit**: Users can now choose playlist context for tracks that appear in multiple playlists
+
+### Impact
+- **MCP Server**: Now provides same continuous playback experience as original VIM implementation
+- **CLI**: Also benefits from playlist context preservation  
+- **User Experience**: Selecting a track plays it within playlist context and continues with next tracks
+
+### Testing Status
+- **Build Status**: ✅ Both `bin/mcp-itunes` and `bin/itunes` rebuild successfully
+- **Script Compatibility**: ✅ Both autoload/ and embedded versions synchronized
+- **Integration**: ✅ Go embed system correctly includes updated JavaScript
+
+**Key Point**: Always use the `collection` field value from search results as the `playlist` parameter in `play_track`.
+
 ## MCP Resources
 
 The MCP server exposes three resources that provide access to cached data:

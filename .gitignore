@@ -9,3 +9,5 @@ run_*
 .gemini/**
 .repomix/**
 .vscode/**
+
+test_*

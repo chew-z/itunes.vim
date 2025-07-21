@@ -29,19 +29,63 @@ function run(argv) {
         $.exit(1)
     }
     try {
-        let trackName = argv.join(' ');
-        let foundTracks = music.search(music.libraryPlaylists[0], { for: trackName });
+        let playlistName = argv[0];
+        let trackName = argv.length > 1 ? argv.slice(1).join(' ') : "";
+        
+        if (verbose) {
+            console.log("Playlist: " + playlistName + ", Track: " + trackName);
+        }
 
-        if (foundTracks.length > 0) {
-            if (verbose) {
-                console.log("Found track, playing: " + foundTracks[0].name())
+        // Find the playlist by name
+        let playlist = null;
+        let playlists = music.playlists();
+        
+        for (let p of playlists) {
+            if (p.name() === playlistName) {
+                playlist = p;
+                break;
             }
-            foundTracks[0].play();
-        } else {
+        }
+        
+        if (!playlist) {
             if (verbose) {
-                console.log("Track not found in library")
+                console.log("Playlist not found: " + playlistName);
             }
             $.exit(1)
+        }
+        
+        // If no specific track is requested, play the entire playlist
+        if (trackName === "") {
+            if (verbose) {
+                console.log("Playing entire playlist: " + playlistName);
+            }
+            playlist.play();
+        } else {
+            // Find the specific track within the playlist
+            let tracks = playlist.tracks();
+            let foundTrack = null;
+            
+            for (let track of tracks) {
+                if (track.name.exists() && track.name() === trackName) {
+                    foundTrack = track;
+                    break;
+                }
+            }
+            
+            if (foundTrack) {
+                if (verbose) {
+                    console.log("Found track in playlist, playing: " + foundTrack.name());
+                }
+                // Play the playlist first to set context, then play the specific track
+                playlist.reveal();
+                playlist.play();
+                foundTrack.play();
+            } else {
+                if (verbose) {
+                    console.log("Track not found in playlist: " + trackName);
+                }
+                $.exit(1)
+            }
         }
     } catch (e) {
         console.log(e)

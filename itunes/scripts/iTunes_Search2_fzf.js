@@ -28,32 +28,80 @@ function run(argv) {
     }
 
     try {
-        let foundTracks = music.search(music.libraryPlaylists[0], { for: searchQuery });
-
-        if (foundTracks.length === 0) {
+        // Try to read from cache first
+        ObjC.import('Foundation')
+        let cacheDir = "/tmp/itunes-cache"
+        let cacheFilePath = cacheDir + "/library.json"
+        
+        // Check if cache file exists
+        let fileManager = $.NSFileManager.defaultManager
+        let fileExists = fileManager.fileExistsAtPath(cacheFilePath)
+        
+        if (!fileExists) {
+            if (verbose) {
+                console.log("Cache file does not exist. Please refresh library first.")
+            }
+            return JSON.stringify([])
+        }
+        
+        // Read the cache file
+        let data = $.NSData.dataWithContentsOfFile(cacheFilePath)
+        if (!data) {
+            if (verbose) {
+                console.log("Could not read cache file")
+            }
+            return JSON.stringify([])
+        }
+        
+        let jsonString = $.NSString.alloc.initWithDataEncoding(data, $.NSUTF8StringEncoding).js
+        let allTracks = JSON.parse(jsonString)
+        
+        if (verbose) {
+            console.log("Loaded " + allTracks.length + " tracks from cache")
+        }
+        
+        // Search through cached tracks with result limiting
+        let matches = []
+        let exactMatches = []
+        let partialMatches = []
+        let queryLower = searchQuery.toLowerCase()
+        
+        for (let track of allTracks) {
+            let trackName = (track.name || "").toLowerCase()
+            let artistName = (track.artist || "").toLowerCase()
+            let albumName = (track.album || "").toLowerCase()
+            let collectionName = (track.collection || "").toLowerCase()
+            
+            // Check for exact matches first (higher priority)
+            if (trackName === queryLower || artistName === queryLower) {
+                exactMatches.push(track)
+            }
+            // Then partial matches
+            else {
+                let searchableText = [collectionName, trackName, artistName, albumName].join(' ')
+                if (searchableText.includes(queryLower)) {
+                    partialMatches.push(track)
+                }
+            }
+        }
+        
+        // Combine results with exact matches first, limit to 15 total
+        matches = exactMatches.concat(partialMatches).slice(0, 15)
+        
+        if (matches.length === 0) {
             if (verbose) {
                 console.log("No tracks found matching query.")
             }
-            $.exit(1)
+            return JSON.stringify([])
+        }
+        
+        if (verbose) {
+            console.log("Found " + matches.length + " matches (" + exactMatches.length + " exact, " + Math.min(partialMatches.length, 15 - exactMatches.length) + " partial)")
         }
 
-        let tr = foundTracks.map(t => {
-            return {
-                id: String(t.id()),
-                name: t.name.exists() ? t.name() : "",
-                album: t.album.exists() ? t.album() : "",
-                collection: t.album.exists() ? t.album() : "", // Using album as collection
-                artist: t.artist.exists() ? t.artist() : "",
-            }
-        })
-
-        if (tr.length > 0) {
-            return JSON.stringify(tr)
-        } else {
-            $.exit(1)
-        }
+        return JSON.stringify(matches);
     } catch (e) {
         console.log(e)
-        $.exit(2)
+        return JSON.stringify([])
     }
 }

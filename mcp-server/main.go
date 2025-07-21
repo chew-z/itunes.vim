@@ -65,9 +65,15 @@ func main() {
 		),
 	)
 
+	// Create refresh tool
+	refreshTool := mcp.NewTool("refresh_library",
+		mcp.WithDescription("Refresh the iTunes/Apple Music library cache. This scans all playlists and tracks to build a comprehensive searchable cache. Should be run when library changes or on first use. Takes 1-3 minutes for large libraries."),
+	)
+
 	// Add tools to server
 	mcpServer.AddTool(searchTool, searchHandler)
 	mcpServer.AddTool(playTool, playHandler)
+	mcpServer.AddTool(refreshTool, refreshHandler)
 
 	// Add MCP resources for cache access
 	cacheStatsResource := mcp.NewResource(
@@ -167,6 +173,35 @@ func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 	} else {
 		return mcp.NewToolResultText(fmt.Sprintf("Started playing playlist '%s'", playlist)), nil
 	}
+}
+
+func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	err := itunes.RefreshLibraryCache()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Library refresh failed: %v", err)), nil
+	}
+
+	// Count tracks and playlists in cache to report detailed success
+	cacheFile := os.TempDir() + "/itunes-cache/library.json"
+	data, err := os.ReadFile(cacheFile)
+	if err != nil {
+		return mcp.NewToolResultText("Library refresh completed, but couldn't verify cache."), nil
+	}
+
+	var tracks []itunes.Track
+	if err := json.Unmarshal(data, &tracks); err != nil {
+		return mcp.NewToolResultText("Library refresh completed, but couldn't parse cache."), nil
+	}
+
+	// Count unique playlists
+	playlistSet := make(map[string]bool)
+	for _, track := range tracks {
+		if track.Collection != "" {
+			playlistSet[track.Collection] = true
+		}
+	}
+
+	return mcp.NewToolResultText(fmt.Sprintf("Library refresh completed successfully!\n\n📊 **Cache Statistics:**\n• **%d tracks** cached from your iTunes library\n• **%d playlists** scanned\n• Cache location: %s\n\n✅ You can now search for music with fast, token-efficient results (max 15 tracks per search).", len(tracks), len(playlistSet), cacheFile)), nil
 }
 
 // Resource handlers for cache access
