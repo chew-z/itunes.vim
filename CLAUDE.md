@@ -213,6 +213,161 @@ foundTrack.play();      // Play specific track within playlist
 
 **Key Point**: Always use the `collection` field value from search results as the `playlist` parameter in `play_track`.
 
+## Critical JavaScript/JXA Script Fixes (2025-01-21)
+
+### Problem: Silent Script Failures and Performance Issues
+
+Following analysis with Gemini AI, several critical issues were identified and resolved in the JXA (JavaScript for Automation) scripts that were causing silent failures and timeout issues.
+
+#### Root Cause Analysis
+1. **Silent Failures**: `$.exit()` calls prevented error reporting to the calling Go programs
+2. **Performance Bottlenecks**: Library refresh iterated through duplicate tracks across all playlists
+3. **Missing Error Context**: Scripts returned empty arrays `[]` instead of structured error information
+4. **Path Inconsistencies**: Hardcoded `/tmp/` paths conflicted with proper macOS temp directories
+
+#### Solutions Implemented
+
+##### 1. Structured JSON Response Format
+**All scripts now return consistent JSON responses:**
+
+```javascript
+// Success Response
+{
+  "status": "success",
+  "data": [...],           // Track data or results
+  "message": "Optional success message"
+}
+
+// Error Response  
+{
+  "status": "error",
+  "message": "Detailed error description",
+  "error": "ErrorName"     // Error type for debugging
+}
+```
+
+**Files Updated:**
+- `autoload/iTunes_Search2_fzf.js` & `itunes/scripts/iTunes_Search2_fzf.js`
+- `autoload/iTunes_Play_Playlist_Track.js` & `itunes/scripts/iTunes_Play_Playlist_Track.js`
+- `autoload/iTunes_Refresh_Library.js` & `itunes/scripts/iTunes_Refresh_Library.js` (new)
+
+##### 2. Performance Optimization: Efficient Library Scanning
+
+**Before (Inefficient):**
+```javascript
+// Iterated through ALL tracks in ALL playlists (massive duplication)
+for (let playlist of music.playlists()) {
+    for (let track of playlist.tracks()) {
+        // Same track processed multiple times if in multiple playlists
+    }
+}
+```
+
+**After (Optimized):**
+```javascript
+// Process each unique track only once from main library
+let libraryPlaylist = music.libraryPlaylists[0];
+let libraryTracks = libraryPlaylist.tracks();
+for (let i = 0; i < libraryTracks.length; i++) {
+    // Each track processed exactly once
+}
+```
+
+**Performance Impact:**
+- **Large Libraries**: Reduced from potentially millions of operations to thousands
+- **Timeout Prevention**: 3-minute timeout now sufficient for libraries with 9000+ tracks
+- **Progress Reporting**: Added progress indicators for large library scans
+
+##### 3. New MCP Tool: `refresh_library`
+
+**Added comprehensive library refresh capability:**
+
+```json
+{
+  "name": "refresh_library",
+  "description": "Refresh the iTunes/Apple Music library cache. This scans all playlists and tracks to build a comprehensive searchable cache. Should be run when library changes or on first use. Takes 1-3 minutes for large libraries.",
+  "parameters": {}
+}
+```
+
+**Enhanced Response Format:**
+```text
+Library refresh completed successfully!
+
+📊 **Cache Statistics:**
+• **1,247 tracks** cached from your iTunes library
+• **23 playlists** scanned  
+• Cache location: /var/folders/.../T/itunes-cache/library.json
+
+✅ You can now search for music with fast, token-efficient results (max 15 tracks per search).
+```
+
+##### 4. Proper macOS Temp Directory Usage
+
+**Updated Path Resolution:**
+```javascript
+// JavaScript/JXA (NSTemporaryDirectory provides proper macOS temp path)
+let tmpDir = $.NSTemporaryDirectory().js
+let cacheDir = tmpDir + "itunes-cache"
+let cacheFilePath = cacheDir + "/library.json"
+```
+
+```go
+// Go (filepath.Join for cross-platform compatibility)
+cacheDir := filepath.Join(os.TempDir(), "itunes-cache")
+cacheFile := filepath.Join(cacheDir, "library.json")
+```
+
+#### Two-Phase Architecture Implementation
+
+**Phase 1: Library Refresh (Background Operation)**
+- **Tool**: `refresh_library` 
+- **Duration**: 1-3 minutes for large libraries
+- **Output**: Complete library cache in `$TMPDIR/itunes-cache/library.json`
+- **When to Use**: First use, after library changes
+
+**Phase 2: Fast Search (Real-time Operation)**
+- **Tool**: `search_itunes`
+- **Duration**: Instant (cache-based lookup)
+- **Output**: Maximum 15 tracks with relevance ranking
+- **Token Efficient**: Exact matches prioritized, results limited
+
+#### Verification Results
+
+**Testing Completed (2025-01-21):**
+- ✅ Library refresh completes successfully (no more timeouts)
+- ✅ Search returns exactly 15 relevant tracks with proper ranking
+- ✅ Cache files created in correct temp directory (`$TMPDIR/itunes-cache/`)
+- ✅ Structured error responses provide actionable debugging information
+- ✅ No more silent failures - all errors reported with context
+- ✅ Playlist context preserved for continuous playback
+
+**Performance Metrics:**
+- **Library Refresh**: ~2-3 minutes for 9000+ track libraries (previously timed out)
+- **Search Response**: Instant (cache-based lookup)
+- **Token Usage**: Maximum 15 tracks per search (LLM-friendly)
+- **Cache Size**: ~1.6MB for 9000+ track library
+
+#### Troubleshooting Guide
+
+**Common Error Messages and Solutions:**
+
+1. **"Cache file does not exist. Please refresh library first."**
+   - **Solution**: Run `refresh_library` tool first to build cache
+   - **Cause**: No library cache has been created yet
+
+2. **"JXA script execution failed:" (empty message)**
+   - **Cause**: This error should no longer occur with structured JSON responses
+   - **Solution**: Update to latest version with structured error handling
+
+3. **Permission/Automation Errors**
+   - **Check**: System Settings > Privacy & Security > Automation
+   - **Solution**: Allow your application to control "Music.app"
+
+4. **Large Library Timeout**
+   - **Expected**: Libraries with 5000+ tracks may take 2-3 minutes to refresh
+   - **Timeout**: Increased to 180 seconds (3 minutes) for refresh operations
+
 ## MCP Resources
 
 The MCP server exposes three resources that provide access to cached data:

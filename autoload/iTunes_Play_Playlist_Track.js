@@ -24,9 +24,9 @@ function run(argv) {
     } // print arguments
     if (argv.length == 0) {
         if (verbose) {
-            console.log('Usage: play [ track ]')
+            console.log('Usage: play playlist [ track ]')
         }
-        $.exit(1)
+        return JSON.stringify({ status: "error", message: "No playlist specified. Usage: play playlist [ track ]" })
     }
     try {
         let playlistName = argv[0];
@@ -51,7 +51,7 @@ function run(argv) {
             if (verbose) {
                 console.log("Playlist not found: " + playlistName);
             }
-            $.exit(1)
+            return JSON.stringify({ status: "error", message: "Playlist not found: " + playlistName })
         }
         
         // If no specific track is requested, play the entire playlist
@@ -60,6 +60,7 @@ function run(argv) {
                 console.log("Playing entire playlist: " + playlistName);
             }
             playlist.play();
+            return JSON.stringify({ status: "success", message: "Started playing playlist: " + playlistName })
         } else {
             // Find the specific track within the playlist
             let tracks = playlist.tracks();
@@ -80,15 +81,15 @@ function run(argv) {
                 playlist.reveal();
                 playlist.play();
                 foundTrack.play();
+                return JSON.stringify({ status: "success", message: "Started playing track '" + trackName + "' from playlist '" + playlistName + "'" })
             } else {
                 if (verbose) {
                     console.log("Track not found in playlist: " + trackName);
                 }
-                $.exit(1)
+                return JSON.stringify({ status: "error", message: "Track not found in playlist: " + trackName })
             }
         }
     } catch (e) {
-        console.log(e)
-        $.exit(2)
+        return JSON.stringify({ status: "error", message: "Script error: " + e.message, error: e.name })
     }
 }

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"time"
 )
 
@@ -65,16 +66,28 @@ func SearchiTunesPlaylists(query string) ([]Track, error) {
 		return nil, fmt.Errorf("%w: %s", ErrScriptFailed, stderr.String())
 	}
 
-	out := stdout.Bytes()
-	if len(out) == 0 {
+	responseJSON := stdout.Bytes()
+	if len(responseJSON) == 0 {
 		return []Track{}, nil
 	}
 
-	var tracks []Track
-	if err := json.Unmarshal(out, &tracks); err != nil {
+	// Parse the structured response
+	var response struct {
+		Status  string  `json:"status"`
+		Data    []Track `json:"data"`
+		Message string  `json:"message"`
+		Error   string  `json:"error"`
+	}
+
+	if err := json.Unmarshal(responseJSON, &response); err != nil {
 		return nil, fmt.Errorf("invalid JSON output: %w", err)
 	}
-	return tracks, nil
+
+	if response.Status == "error" {
+		return nil, fmt.Errorf("search script error: %s", response.Message)
+	}
+
+	return response.Data, nil
 }
 
 // PlayPlaylistTrack runs the embedded iTunes_Play_Playlist_Track.js script to play a playlist or track.
@@ -104,11 +117,28 @@ func PlayPlaylistTrack(playlistName, trackName string) error {
 
 	cmd := exec.CommandContext(ctx, "osascript", args...)
 
-	var stderr bytes.Buffer
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("%w: %s", ErrScriptFailed, stderr.String())
+	}
+
+	// Parse the structured response
+	responseJSON := stdout.Bytes()
+	if len(responseJSON) > 0 {
+		var response struct {
+			Status  string `json:"status"`
+			Message string `json:"message"`
+			Error   string `json:"error"`
+		}
+
+		if err := json.Unmarshal(responseJSON, &response); err == nil {
+			if response.Status == "error" {
+				return fmt.Errorf("play script error: %s", response.Message)
+			}
+		}
 	}
 
 	return nil
@@ -121,7 +151,7 @@ func RefreshLibraryCache() error {
 	defer cancel()
 
 	// Ensure cache directory exists
-	cacheDir := os.TempDir() + "/itunes-cache"
+	cacheDir := filepath.Join(os.TempDir(), "itunes-cache")
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
 		return fmt.Errorf("failed to create cache directory: %w", err)
 	}
@@ -157,13 +187,35 @@ func RefreshLibraryCache() error {
 	}
 
 	// Get the JSON output from the refresh script
-	libraryJSON := stdout.Bytes()
-	if len(libraryJSON) == 0 {
+	responseJSON := stdout.Bytes()
+	if len(responseJSON) == 0 {
 		return errors.New("refresh script returned no data")
 	}
 
+	// Parse the structured response
+	var response struct {
+		Status  string  `json:"status"`
+		Data    []Track `json:"data"`
+		Message string  `json:"message"`
+		Error   string  `json:"error"`
+	}
+
+	if err := json.Unmarshal(responseJSON, &response); err != nil {
+		return fmt.Errorf("failed to parse refresh script response: %w", err)
+	}
+
+	if response.Status != "success" {
+		return fmt.Errorf("refresh script failed: %s", response.Message)
+	}
+
+	// Convert track data back to JSON for cache file
+	libraryJSON, err := json.Marshal(response.Data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal track data: %w", err)
+	}
+
 	// Write the library data to cache file
-	cacheFile := cacheDir + "/library.json"
+	cacheFile := filepath.Join(cacheDir, "library.json")
 	if err := os.WriteFile(cacheFile, libraryJSON, 0644); err != nil {
 		return fmt.Errorf("failed to write cache file: %w", err)
 	}

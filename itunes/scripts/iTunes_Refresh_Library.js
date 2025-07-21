@@ -16,62 +16,54 @@ function run(argv) {
     try {
         let allTracks = [];
         
-        // Search through all playlists to build comprehensive library cache
-        let playlists = music.playlists();
+        // Get the main library playlist, which contains all unique tracks
+        let libraryPlaylist = music.libraryPlaylists[0];
+        let libraryTracks = libraryPlaylist.tracks();
+        let trackCount = libraryTracks.length;
         
         if (verbose) {
-            console.log("Found " + playlists.length + " playlists to process")
+            console.log("Found " + trackCount + " unique tracks in the library")
         }
         
-        for (let playlist of playlists) {
+        // Iterate through unique tracks once (much more efficient)
+        for (let i = 0; i < trackCount; i++) {
+            let track = libraryTracks[i];
             try {
-                let playlistName = playlist.name();
-                let tracks = playlist.tracks();
+                let trackName = track.name.exists() ? track.name() : "";
+                let artistName = track.artist.exists() ? track.artist() : "";
+                let albumName = track.album.exists() ? track.album() : "";
                 
-                if (verbose && playlists.indexOf(playlist) % 10 === 0) {
-                    console.log("Processing playlist: " + playlistName + " (" + tracks.length + " tracks)")
+                // Skip empty tracks
+                if (trackName === "" && artistName === "") {
+                    continue;
                 }
                 
-                for (let track of tracks) {
-                    try {
-                        let trackName = track.name.exists() ? track.name() : "";
-                        let artistName = track.artist.exists() ? track.artist() : "";
-                        let albumName = track.album.exists() ? track.album() : "";
-                        
-                        // Skip empty tracks
-                        if (trackName === "" && artistName === "") {
-                            continue;
-                        }
-                        
-                        allTracks.push({
-                            id: String(track.id()),
-                            name: trackName,
-                            album: albumName,
-                            collection: playlistName, // Using actual playlist name as collection
-                            artist: artistName,
-                        });
-                    } catch (trackError) {
-                        // Skip tracks that can't be accessed
-                        if (verbose) {
-                            console.log("Error accessing track: " + trackError);
-                        }
-                    }
+                allTracks.push({
+                    id: String(track.id()),
+                    name: trackName,
+                    album: albumName,
+                    collection: albumName, // Using album as collection for consistent, non-duplicate results
+                    artist: artistName,
+                });
+                
+                // Progress indicator for large libraries
+                if (verbose && i > 0 && i % 1000 === 0) {
+                    console.log("Processed " + i + " of " + trackCount + " tracks...")
                 }
-            } catch (playlistError) {
-                // Skip playlists that can't be accessed
+            } catch (trackError) {
+                // Skip tracks that can't be accessed
                 if (verbose) {
-                    console.log("Error accessing playlist: " + playlistError);
+                    console.log("Error accessing track at index " + i + ": " + trackError);
                 }
             }
         }
 
         if (verbose) {
-            console.log("Library refresh complete. Total tracks: " + allTracks.length)
+            console.log("Library refresh complete. Total unique tracks: " + allTracks.length)
         }
 
-        return JSON.stringify(allTracks);
+        return JSON.stringify({ status: "success", data: allTracks });
     } catch (e) {
-        console.log("Library refresh error: " + e)
-        return JSON.stringify([])
+        return JSON.stringify({ status: "error", message: "Library refresh error: " + e.message, error: e.name })
     }
 }

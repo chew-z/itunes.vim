@@ -30,7 +30,8 @@ function run(argv) {
     try {
         // Try to read from cache first
         ObjC.import('Foundation')
-        let cacheDir = "/tmp/itunes-cache"
+        let tmpDir = $.NSTemporaryDirectory().js
+        let cacheDir = tmpDir + "itunes-cache"
         let cacheFilePath = cacheDir + "/library.json"
         
         // Check if cache file exists
@@ -41,7 +42,7 @@ function run(argv) {
             if (verbose) {
                 console.log("Cache file does not exist. Please refresh library first.")
             }
-            return JSON.stringify([])
+            return JSON.stringify({ status: "error", message: "Cache file does not exist. Please refresh library first." })
         }
         
         // Read the cache file
@@ -50,7 +51,7 @@ function run(argv) {
             if (verbose) {
                 console.log("Could not read cache file")
             }
-            return JSON.stringify([])
+            return JSON.stringify({ status: "error", message: "Could not read cache file" })
         }
         
         let jsonString = $.NSString.alloc.initWithDataEncoding(data, $.NSUTF8StringEncoding).js
@@ -92,16 +93,15 @@ function run(argv) {
             if (verbose) {
                 console.log("No tracks found matching query.")
             }
-            return JSON.stringify([])
+            return JSON.stringify({ status: "success", data: [], message: "No tracks found matching query." })
         }
         
         if (verbose) {
             console.log("Found " + matches.length + " matches (" + exactMatches.length + " exact, " + Math.min(partialMatches.length, 15 - exactMatches.length) + " partial)")
         }
 
-        return JSON.stringify(matches);
+        return JSON.stringify({ status: "success", data: matches });
     } catch (e) {
-        console.log(e)
-        return JSON.stringify([])
+        return JSON.stringify({ status: "error", message: "Search error: " + e.message, error: e.name })
     }
 }

@@ -182,7 +182,7 @@ func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 	}
 
 	// Count tracks and playlists in cache to report detailed success
-	cacheFile := os.TempDir() + "/itunes-cache/library.json"
+	cacheFile := filepath.Join(os.TempDir(), "itunes-cache", "library.json")
 	data, err := os.ReadFile(cacheFile)
 	if err != nil {
 		return mcp.NewToolResultText("Library refresh completed, but couldn't verify cache."), nil
