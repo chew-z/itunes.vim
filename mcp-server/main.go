@@ -44,7 +44,7 @@ func main() {
 
 	// Create play tool
 	playTool := mcp.NewTool("play_track",
-		mcp.WithDescription("Plays a track, playlist, or album. To play a specific track within a playlist or album, provide both the track identifier (track_id or track) and the context (playlist or album)."),
+		mcp.WithDescription("Plays a track with optional playlist context for continuous playback. Playlist context enables seamless continuation within the playlist. Album parameter helps locate tracks but does not provide playback context."),
 		mcp.WithString("track_id",
 			mcp.Description("The unique ID of the track from a search result. The most reliable way to play a specific track."),
 		),
@@ -52,7 +52,7 @@ func main() {
 			mcp.Description("The name of the playlist to play. If a track_id is also given, starts playback from that track within the playlist."),
 		),
 		mcp.WithString("album",
-			mcp.Description("The name of the album to play. If a track_id is also given, starts playback from that track within the album."),
+			mcp.Description("The name of the album to help locate tracks. Note: Does not provide album playback context - individual track will play without album continuation."),
 		),
 		mcp.WithString("track",
 			mcp.Description("The name of the track. Use as a fallback if track_id is not known."),
@@ -61,7 +61,7 @@ func main() {
 
 	// Create refresh tool
 	refreshTool := mcp.NewTool("refresh_library",
-		mcp.WithDescription("Updates the local library cache from the Music app. This can take several minutes for large libraries. Run this only if your library has changed significantly."),
+		mcp.WithDescription("Refreshes the iTunes library database by extracting current data from Apple Music app and populating SQLite database. Takes 1-3 minutes for large libraries. Use only when library has changed significantly."),
 	)
 
 	// Create now playing tool

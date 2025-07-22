@@ -138,11 +138,11 @@ The system now uses SQLite as the primary and only storage backend, with Apple M
 - **Returns**: JSON array of matching tracks with metadata
 
 ### `play_track`
-- **Description**: Play a track with proper context for continuous playback. Use `track_id` with either `playlist` or `album` for optimal experience. The `playlist` parameter now works with actual user-created playlists.
+- **Description**: Play a track with optional playlist context for continuous playback. Playlist context enables seamless continuation within the playlist. Album parameter helps locate tracks but does not provide playback context.
 - **Parameters**:
   - `track_id` (string, optional): **RECOMMENDED** - Use the exact `id` field value from search results. Most reliable method that avoids encoding/character issues.
-  - `playlist` (string, optional): **For playlist context** - Use when playing from a user-created playlist. Use exact `collection` field value or a value from the `playlists` array.
-  - `album` (string, optional): **For album context** - Use the exact `album` field value from search results. Provides album context for continuous playback.
+  - `playlist` (string, optional): **For continuous playback** - Use when playing from a user-created playlist. Use exact `collection` field value or a value from the `playlists` array. Enables playlist continuation.
+  - `album` (string, optional): **For track location only** - Use the exact `album` field value from search results. Helps find tracks but does NOT provide album playback context.
   - `track` (string, optional): **FALLBACK** - Use the exact `name` field value from search results. Only use if `track_id` not available. Less reliable with complex names.
 - **Returns**: **Enhanced** - JSON object with playback result and current track info after a 1-second delay
 
@@ -152,9 +152,10 @@ The system now uses SQLite as the primary and only storage backend, with Apple M
 - **Returns**: JSON object with current track details, playback position, and player status ("playing", "paused", "stopped", "error")
 
 ### `refresh_library`
-- **Description**: Refresh iTunes library database (1-3 minutes for large libraries)
+- **Description**: Refreshes the iTunes library database by extracting current data from Apple Music app and populating SQLite database. Takes 1-3 minutes for large libraries. Use only when library has changed significantly.
 - **Parameters**: None
 - **Returns**: Database population statistics and refresh status
+- **Process**: JXA script extraction → JSON cache creation → SQLite database population
 - **Warning**: Resource-intensive operation - only use with user approval
 
 ### `list_playlists`
@@ -184,14 +185,14 @@ The system now uses SQLite as the primary and only storage backend, with Apple M
 
 ## Usage Patterns
 
-**BEST PRACTICE: ID-based with album context (continuous playback):**
-```json
-{"track_id": "B258396D58E2ECC9", "album": "Cul-De-Sac & Knife In The Water"}
-```
-
 **BEST PRACTICE: ID-based with playlist context (continuous playback):**
 ```json
 {"track_id": "B258396D58E2ECC9", "playlist": "My Jazz Collection"}
+```
+
+**ID-based with album (track location, no continuous playback):**
+```json
+{"track_id": "B258396D58E2ECC9", "album": "Cul-De-Sac & Knife In The Water"}
 ```
 
 **ID-only playback (single track only):**
@@ -199,7 +200,7 @@ The system now uses SQLite as the primary and only storage backend, with Apple M
 {"track_id": "B258396D58E2ECC9"}
 ```
 
-**FALLBACK: Name-based with album context:**
+**FALLBACK: Name-based with album (track location only):**
 ```json
 {"track": "Walk On The Water", "album": "Cul-De-Sac & Knife In The Water"}
 ```
