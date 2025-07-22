@@ -4,7 +4,6 @@ go 1.24.4
 
 require (
 	github.com/mark3labs/mcp-go v0.34.0
-	github.com/patrickmn/go-cache v2.1.0+incompatible
 	modernc.org/sqlite v1.27.0
 )
 

@@ -178,70 +178,6 @@ func PlayPlaylistTrack(playlistName, albumName, trackName, trackID string) error
 	return fmt.Errorf("unexpected play script response: %s", response)
 }
 
-// SearchTracksFromCache searches the iTunes library cache directly without using JavaScript.
-// This is much faster than SearchiTunesPlaylists as it eliminates the osascript overhead.
-func SearchTracksFromCache(query string) ([]Track, error) {
-	if query == "" {
-		return nil, errors.New("search query cannot be empty")
-	}
-
-	// Read the library cache file
-	cacheFile := filepath.Join(os.TempDir(), "itunes-cache", "library.json")
-	data, err := os.ReadFile(cacheFile)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, errors.New("library cache not found - please run refresh_library first")
-		}
-		return nil, fmt.Errorf("failed to read library cache: %w", err)
-	}
-
-	var allTracks []Track
-	if err := json.Unmarshal(data, &allTracks); err != nil {
-		return nil, fmt.Errorf("failed to parse library cache: %w", err)
-	}
-
-	// Perform search with same logic as iTunes_Search2_fzf.js
-	var exactMatches []Track
-	var partialMatches []Track
-	queryLower := strings.ToLower(strings.TrimSpace(query))
-
-	for _, track := range allTracks {
-		trackName := strings.ToLower(track.Name)
-		artistName := strings.ToLower(track.Artist)
-		albumName := strings.ToLower(track.Album)
-		collectionName := strings.ToLower(track.Collection)
-
-		// Check for exact matches first (higher priority)
-		if trackName == queryLower || artistName == queryLower {
-			exactMatches = append(exactMatches, track)
-		} else {
-			// Check partial matches in all searchable fields including track ID and playlists
-			trackID := strings.ToLower(track.ID)
-			playlistsStr := strings.ToLower(strings.Join(track.Playlists, " "))
-			searchableText := strings.Join([]string{collectionName, trackName, artistName, albumName, trackID, playlistsStr}, " ")
-			if strings.Contains(searchableText, queryLower) {
-				partialMatches = append(partialMatches, track)
-			}
-		}
-	}
-
-	// Combine results with exact matches first, limit to 15 total
-	matches := exactMatches
-	if len(matches) < 15 {
-		remaining := 15 - len(matches)
-		if remaining > len(partialMatches) {
-			remaining = len(partialMatches)
-		}
-		matches = append(matches, partialMatches[:remaining]...)
-	}
-
-	if len(matches) == 0 {
-		return nil, ErrNoTracksFound
-	}
-
-	return matches, nil
-}
-
 // RefreshLibraryCache runs the embedded iTunes_Refresh_Library.js script to build a comprehensive library cache.
 // The cache is stored as JSON in $TMPDIR/itunes-cache/library.json for fast searching.
 func RefreshLibraryCache() error {
@@ -404,8 +340,7 @@ func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID str
 var (
 	dbManager     *database.DatabaseManager
 	searchManager *database.SearchManager
-	UseDatabase   = true // Database mode is now default
-	SearchLimit   = 15   // Default search limit, can be overridden by ITUNES_SEARCH_LIMIT env var
+	SearchLimit   = 15 // Default search limit, can be overridden by ITUNES_SEARCH_LIMIT env var
 )
 
 // InitDatabase initializes the SQLite database connection
@@ -555,11 +490,10 @@ func ListPlaylists() ([]database.Playlist, error) {
 	return dbManager.ListPlaylists()
 }
 
-// SearchTracks is the main search function that uses database by default
+// SearchTracks is the main search function using database
 func SearchTracks(query string) ([]Track, error) {
-	if UseDatabase && dbManager != nil {
-		return SearchTracksFromDatabase(query, nil)
+	if dbManager == nil {
+		return nil, errors.New("database not initialized - please run InitDatabase() first")
 	}
-	// Fallback to cache-based search (will be deprecated)
-	return SearchTracksFromCache(query)
+	return SearchTracksFromDatabase(query, nil)
 }
