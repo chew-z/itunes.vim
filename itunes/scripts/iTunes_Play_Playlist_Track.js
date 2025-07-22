@@ -98,14 +98,31 @@ function run(argv) {
                     if (verbose) {
                         console.log("Found track in playlist: " + foundTrack.name());
                     }
-                    // Restoring the original, correct sequence for context-aware playback.
-                    music.mute = true;
-                    music.shuffleEnabled = true; // This seems to be a key part of the sequence
-                    playlist.reveal();
-                    playlist.play(); // Start the playlist to load the queue
-                    foundTrack.play(); // Immediately play the target track
-                    music.mute = false;
-                    return "OK: Started playing track '" + foundTrack.name() + "' from playlist '" + playlistName + "'";
+                    try {
+                        // Improved playback sequence with proper timing and context setting
+                        music.mute = true;
+                        
+                        // Ensure shuffle is off for predictable playback
+                        music.shuffleEnabled = false;
+                        
+                        // Set playlist context first
+                        playlist.reveal();
+                        
+                        // Small delay to ensure playlist is loaded
+                        $.NSThread.sleepForTimeInterval(0.1);
+                        
+                        // Play the specific track directly - Apple Music will maintain playlist context
+                        foundTrack.play();
+                        
+                        // Small delay before unmuting to ensure playback started
+                        $.NSThread.sleepForTimeInterval(0.2);
+                        music.mute = false;
+                        
+                        return "OK: Started playing track '" + foundTrack.name() + "' from playlist '" + playlistName + "'";
+                    } catch (playError) {
+                        music.mute = false; // Ensure we don't leave music muted
+                        return "ERROR: Failed to play track '" + foundTrack.name() + "' from playlist '" + playlistName + "': " + playError.message;
+                    }
                 } else {
                     return "ERROR: Track not found in playlist '" + playlistName + "'";
                 }
@@ -159,14 +176,29 @@ function run(argv) {
                     if (verbose) {
                         console.log("Found " + albumTracks.length + " tracks in album, playing: " + targetTrack.name());
                     }
-                    // Apply the same logic that worked for playlists to albums.
-                    music.mute = true;
-                    music.shuffleEnabled = true;
-                    targetTrack.reveal(); // Reveal the track itself
-                    albumTracks[0].play(); // Play first track of album to set context
-                    targetTrack.play(); // Immediately jump to the target track
-                    music.mute = false;
-                    return "OK: Started playing track '" + targetTrack.name() + "' from album '" + albumName + "'";
+                    try {
+                        // Improved album playback sequence
+                        music.mute = true;
+                        music.shuffleEnabled = false; // Disable shuffle for predictable album playback
+                        
+                        // Reveal the target track to set album context
+                        targetTrack.reveal();
+                        
+                        // Small delay to ensure context is set
+                        $.NSThread.sleepForTimeInterval(0.1);
+                        
+                        // Play the target track directly - Apple Music maintains album context
+                        targetTrack.play();
+                        
+                        // Small delay before unmuting to ensure playback started
+                        $.NSThread.sleepForTimeInterval(0.2);
+                        music.mute = false;
+                        
+                        return "OK: Started playing track '" + targetTrack.name() + "' from album '" + albumName + "'";
+                    } catch (playError) {
+                        music.mute = false; // Ensure we don't leave music muted
+                        return "ERROR: Failed to play track '" + targetTrack.name() + "' from album '" + albumName + "': " + playError.message;
+                    }
                 } else {
                     return "ERROR: Track not found in album '" + albumName + "'";
                 }

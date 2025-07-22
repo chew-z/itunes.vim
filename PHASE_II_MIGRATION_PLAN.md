@@ -1,28 +1,28 @@
-# iTunes Phase II Migration Plan: PostgreSQL + Simplified Normalized Schema
+# iTunes Phase II Migration Plan: SQLite + Apple Music Persistent IDs
 
 ## 1. Revised Database Schema (Practical & Focused)
 
-### Core Tables with Genre Support
+### SQLite Schema with Apple Music Persistent IDs & FTS5
 ```sql
 -- Artists table
 CREATE TABLE artists (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL UNIQUE,
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Genres table (shared across albums, playlists, tracks)
 CREATE TABLE genres (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(100) NOT NULL UNIQUE,
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Albums table with genre support
+-- Albums table with genre support (no direct persistent ID - handled via tracks)
 CREATE TABLE albums (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
     artist_id INTEGER NOT NULL REFERENCES artists(id),
     genre_id INTEGER REFERENCES genres(id),
     year INTEGER,
@@ -31,11 +31,11 @@ CREATE TABLE albums (
     UNIQUE(name, artist_id)
 );
 
--- Simplified tracks table (focused on search & playback)
+-- Tracks table with Apple Music persistent IDs
 CREATE TABLE tracks (
-    id SERIAL PRIMARY KEY,
-    itunes_id VARCHAR(50) NOT NULL UNIQUE, -- Apple Music persistentID
-    name VARCHAR(255) NOT NULL,
+    id INTEGER PRIMARY KEY,
+    persistent_id TEXT NOT NULL UNIQUE, -- Apple Music persistentID (128-bit UUID as hex)
+    name TEXT NOT NULL,
     artist_id INTEGER NOT NULL REFERENCES artists(id),
     album_id INTEGER REFERENCES albums(id),
     genre_id INTEGER REFERENCES genres(id), -- Track-level genre override
@@ -46,19 +46,20 @@ CREATE TABLE tracks (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Playlists table with genre support
+-- Playlists table with Apple Music persistent IDs
 CREATE TABLE playlists (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL UNIQUE,
+    id INTEGER PRIMARY KEY,
+    persistent_id TEXT UNIQUE, -- Apple Music playlist persistentID (128-bit UUID as hex)
+    name TEXT NOT NULL UNIQUE,
     genre_id INTEGER REFERENCES genres(id), -- Playlist genre/category
-    special_kind VARCHAR(50), -- Apple Music specialKind
+    special_kind TEXT, -- Apple Music specialKind (e.g., "Library", "Music", "Purchased")
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Many-to-many relationship between playlists and tracks
 CREATE TABLE playlist_tracks (
-    id SERIAL PRIMARY KEY,
+    id INTEGER PRIMARY KEY,
     playlist_id INTEGER NOT NULL REFERENCES playlists(id) ON DELETE CASCADE,
     track_id INTEGER NOT NULL REFERENCES tracks(id) ON DELETE CASCADE,
     position INTEGER NOT NULL,
@@ -66,43 +67,108 @@ CREATE TABLE playlist_tracks (
     UNIQUE(playlist_id, track_id)
 );
 
+-- Full-Text Search for fast track search (FTS5)
+CREATE VIRTUAL TABLE tracks_fts USING fts5(
+    persistent_id,
+    name,
+    artist_name,
+    album_name,
+    genre_name,
+    playlist_names, -- Space-separated list of playlists containing this track
+    content='', -- External content table (we'll populate manually)
+    tokenize='porter'
+);
+
 -- Essential indexes for search performance
+CREATE INDEX idx_tracks_persistent_id ON tracks(persistent_id);
 CREATE INDEX idx_tracks_name ON tracks(name);
-CREATE INDEX idx_tracks_itunes_id ON tracks(itunes_id);
 CREATE INDEX idx_tracks_artist ON tracks(artist_id);
 CREATE INDEX idx_tracks_album ON tracks(album_id);
 CREATE INDEX idx_tracks_genre ON tracks(genre_id);
 CREATE INDEX idx_tracks_starred ON tracks(starred);
 CREATE INDEX idx_tracks_rating ON tracks(rating);
-CREATE INDEX idx_albums_genre ON albums(genre_id);
+CREATE INDEX idx_playlists_persistent_id ON playlists(persistent_id);
+CREATE INDEX idx_playlists_name ON playlists(name);
 CREATE INDEX idx_playlists_genre ON playlists(genre_id);
 CREATE INDEX idx_playlist_tracks_playlist ON playlist_tracks(playlist_id, position);
+CREATE INDEX idx_playlist_tracks_track ON playlist_tracks(track_id);
+
+-- Triggers to maintain FTS5 search index
+CREATE TRIGGER tracks_fts_insert AFTER INSERT ON tracks 
+BEGIN
+    INSERT INTO tracks_fts(rowid, persistent_id, name, artist_name, album_name, genre_name, playlist_names)
+    SELECT 
+        new.id,
+        new.persistent_id,
+        new.name,
+        a.name,
+        COALESCE(al.name, ''),
+        COALESCE(g.name, ''),
+        COALESCE(GROUP_CONCAT(p.name, ' '), '')
+    FROM tracks t
+    LEFT JOIN artists a ON t.artist_id = a.id
+    LEFT JOIN albums al ON t.album_id = al.id  
+    LEFT JOIN genres g ON t.genre_id = g.id
+    LEFT JOIN playlist_tracks pt ON t.id = pt.track_id
+    LEFT JOIN playlists p ON pt.playlist_id = p.id
+    WHERE t.id = new.id
+    GROUP BY t.id;
+END;
+
+CREATE TRIGGER tracks_fts_update AFTER UPDATE ON tracks 
+BEGIN
+    DELETE FROM tracks_fts WHERE rowid = old.id;
+    INSERT INTO tracks_fts(rowid, persistent_id, name, artist_name, album_name, genre_name, playlist_names)
+    SELECT 
+        new.id,
+        new.persistent_id,
+        new.name,
+        a.name,
+        COALESCE(al.name, ''),
+        COALESCE(g.name, ''),
+        COALESCE(GROUP_CONCAT(p.name, ' '), '')
+    FROM tracks t
+    LEFT JOIN artists a ON t.artist_id = a.id
+    LEFT JOIN albums al ON t.album_id = al.id  
+    LEFT JOIN genres g ON t.genre_id = g.id
+    LEFT JOIN playlist_tracks pt ON t.id = pt.track_id
+    LEFT JOIN playlists p ON pt.playlist_id = p.id
+    WHERE t.id = new.id
+    GROUP BY t.id;
+END;
+
+CREATE TRIGGER tracks_fts_delete AFTER DELETE ON tracks 
+BEGIN
+    DELETE FROM tracks_fts WHERE rowid = old.id;
+END;
 ```
 
-## 2. Docker Compose Setup
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: itunes
-      POSTGRES_USER: itunes
-      POSTGRES_PASSWORD: itunes_password
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U itunes"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+## 2. SQLite Database Location & Management
 
-volumes:
-  postgres_data:
+### Database File Location
+- **Primary location**: `$TMPDIR/itunes-cache/library.db` (matches current cache pattern)
+- **Backup location**: `~/.config/itunes/library.db` (persistent across reboots)
+- **Schema migrations**: Embedded SQL scripts with version tracking
+
+### Database Initialization
+```go
+// Database file management in database.go
+const (
+    PrimaryDBPath = filepath.Join(os.TempDir(), "itunes-cache", "library.db")
+    BackupDBPath  = filepath.Join(os.Getenv("HOME"), ".config", "itunes", "library.db")
+    SchemaVersion = 1
+)
+
+func InitDatabase() error {
+    // Create cache directory
+    if err := os.MkdirAll(filepath.Dir(PrimaryDBPath), 0755); err != nil {
+        return err
+    }
+    
+    // Initialize with schema
+    db, err := sql.Open("sqlite3", PrimaryDBPath)
+    // ... schema creation and migrations
+}
 ```
 
 ## 3. Database Layer (`database.go`)
@@ -111,18 +177,19 @@ package itunes
 
 import (
     "context"
+    "database/sql"
     "time"
     
-    "github.com/jackc/pgx/v5/pgxpool"
+    _ "modernc.org/sqlite" // Pure Go SQLite driver
 )
 
 type DatabaseManager struct {
-    pool *pgxpool.Pool
+    db *sql.DB
 }
 
-// Track struct (enhanced from current minimal version)
+// Enhanced Track struct with Apple Music persistent IDs
 type Track struct {
-    ID         string   `json:"id"`         // Apple Music persistentID
+    ID         string   `json:"id"`         // Apple Music persistentID (hex format)
     Name       string   `json:"name"`       // Track name
     Album      string   `json:"album"`      // Album name
     Collection string   `json:"collection"` // Primary playlist or album
@@ -134,163 +201,281 @@ type Track struct {
     Ranking    *int     `json:"ranking"`    // Custom ranking/priority
 }
 
-type SearchFilters struct {
-    Genre     string  // Filter by genre
-    Artist    string  // Filter by artist
-    Album     string  // Filter by album
-    Playlist  string  // Filter by playlist
-    Starred   *bool   // Filter by starred status (nil = any)
-    MinRating int     // Minimum rating (0-100)
-    Limit     int     // Result limit (default 15)
+// Enhanced Playlist struct with persistent IDs
+type Playlist struct {
+    ID          string `json:"id"`           // Apple Music playlist persistentID
+    Name        string `json:"name"`         // Playlist name
+    Genre       string `json:"genre"`        // Playlist genre/category
+    SpecialKind string `json:"special_kind"` // Apple Music specialKind
+    TrackCount  int    `json:"track_count"`  // Number of tracks
 }
 
-// Core database operations with shared pool
-func NewDatabaseManager(ctx context.Context, connString string) (*DatabaseManager, error)
-func (dm *DatabaseManager) Close()
-func (dm *DatabaseManager) SearchTracks(ctx context.Context, query string, filters SearchFilters) ([]Track, error)
-func (dm *DatabaseManager) GetTrackByItunesID(ctx context.Context, itunesID string) (*Track, error)
-func (dm *DatabaseManager) GetPlaylistTracks(ctx context.Context, playlistName string) ([]Track, error)
+type SearchFilters struct {
+    Genre       string  // Filter by genre
+    Artist      string  // Filter by artist
+    Album       string  // Filter by album
+    Playlist    string  // Filter by playlist (supports both name and persistentID)
+    Starred     *bool   // Filter by starred status (nil = any)
+    MinRating   int     // Minimum rating (0-100)
+    Limit       int     // Result limit (default 15)
+    UsePlaylistID bool  // If true, Playlist field is treated as persistentID
+}
 
-// Batch operations for refresh service
+// Core database operations with SQLite
+func NewDatabaseManager(ctx context.Context, dbPath string) (*DatabaseManager, error)
+func (dm *DatabaseManager) Close() error
+func (dm *DatabaseManager) SearchTracks(ctx context.Context, query string, filters SearchFilters) ([]Track, error)
+func (dm *DatabaseManager) SearchTracksWithFTS(ctx context.Context, query string, filters SearchFilters) ([]Track, error)
+func (dm *DatabaseManager) GetTrackByPersistentID(ctx context.Context, persistentID string) (*Track, error)
+func (dm *DatabaseManager) GetPlaylistTracks(ctx context.Context, playlistName string) ([]Track, error)
+func (dm *DatabaseManager) GetPlaylistByPersistentID(ctx context.Context, persistentID string) (*Playlist, error)
+func (dm *DatabaseManager) ListPlaylists(ctx context.Context) ([]Playlist, error)
+
+// Batch operations for refresh service with persistent ID support
 func (dm *DatabaseManager) BatchInsertTracks(ctx context.Context, tracks []Track) error
 func (dm *DatabaseManager) BatchUpdateTracks(ctx context.Context, tracks []Track) error
-func (dm *DatabaseManager) BatchInsertPlaylistTracks(ctx context.Context, playlistName string, trackIDs []string) error
+func (dm *DatabaseManager) UpsertPlaylist(ctx context.Context, persistentID, name, specialKind, genre string) error
+func (dm *DatabaseManager) BatchInsertPlaylistTracks(ctx context.Context, playlistPersistentID string, trackPersistentIDs []string) error
+
+// Migration and maintenance
+func (dm *DatabaseManager) RunMigrations(ctx context.Context) error
+func (dm *DatabaseManager) Vacuum(ctx context.Context) error
+func (dm *DatabaseManager) GetStats(ctx context.Context) (DatabaseStats, error)
+
+type DatabaseStats struct {
+    TrackCount    int `json:"track_count"`
+    PlaylistCount int `json:"playlist_count"`
+    ArtistCount   int `json:"artist_count"`
+    AlbumCount    int `json:"album_count"`
+    GenreCount    int `json:"genre_count"`
+    DatabaseSize  int `json:"database_size_bytes"`
+}
 ```
 
-## 4. Background Refresh Service (`refresh-service/`)
+## 4. Enhanced Refresh Service with Persistent ID Support
 
 ### Standalone Binary (`bin/itunes-refresh`)
 - **Independent service**: No CLI/MCP dependencies
 - **Scheduled execution**: Run via cron/systemd timer
-- **Enhanced JXA script**: Extract genres for tracks, albums, playlists
-- **Batch operations**: Efficient bulk database updates
-- **Incremental sync**: Only update changed tracks
+- **Enhanced JXA script**: Extract persistent IDs, genres for tracks, albums, playlists
+- **Atomic transactions**: SQLite transactions for reliable library updates
+- **Incremental sync**: Track-level change detection using persistent IDs
+- **Playlist tracking**: Full playlist persistent ID and membership tracking
 
-### Core Operations
+### Enhanced JXA Script Updates
+```javascript
+// Enhanced iTunes_Refresh_Library.js with persistent ID support
+function extractTrackData() {
+    let tracks = [];
+    let music = Application('Music');
+    
+    // Get all tracks with persistent IDs
+    let allTracks = music.libraryPlaylists[0].tracks;
+    for (let i = 0; i < allTracks.length; i++) {
+        let track = allTracks[i];
+        tracks.push({
+            persistent_id: track.persistentID(), // Apple Music 128-bit UUID
+            name: track.name(),
+            artist: track.artist(),
+            album: track.album(),
+            genre: track.genre(),
+            rating: track.rating(),
+            // ... other fields
+        });
+    }
+    
+    // Get all playlists with persistent IDs
+    let playlists = [];
+    let userPlaylists = music.userPlaylists;
+    for (let i = 0; i < userPlaylists.length; i++) {
+        let playlist = userPlaylists[i];
+        let trackIds = [];
+        for (let j = 0; j < playlist.tracks.length; j++) {
+            trackIds.push(playlist.tracks[j].persistentID());
+        }
+        playlists.push({
+            persistent_id: playlist.persistentID(), // Playlist persistent ID
+            name: playlist.name(),
+            special_kind: playlist.specialKind(),
+            track_persistent_ids: trackIds
+        });
+    }
+    
+    return {tracks: tracks, playlists: playlists};
+}
+```
+
+### Core Operations with Persistent ID Support
 ```go
-// Enhanced refresh operations
+// Enhanced refresh operations with persistent IDs
 func RefreshLibraryToDatabase(ctx context.Context, db *DatabaseManager) error
 func BatchProcessTracks(ctx context.Context, db *DatabaseManager, tracks []Track) error
-func SyncPlaylists(ctx context.Context, db *DatabaseManager, playlists map[string][]string) error
+func SyncPlaylistsWithPersistentIDs(ctx context.Context, db *DatabaseManager, playlists []PlaylistData) error
+func DetectChangedTracks(ctx context.Context, db *DatabaseManager, newTracks []Track) ([]Track, error)
+func CleanupOrphanedTracks(ctx context.Context, db *DatabaseManager, activePersistentIDs []string) error
+
+type PlaylistData struct {
+    PersistentID        string   `json:"persistent_id"`
+    Name                string   `json:"name"`
+    SpecialKind         string   `json:"special_kind"`
+    TrackPersistentIDs  []string `json:"track_persistent_ids"`
+}
 ```
 
-## 5. Migration Strategy
+## 5. Migration Strategy (SQLite-First with Persistent IDs)
 
-### Phase 1: Database Infrastructure
-1. **Docker setup**: Create `docker-compose.yml` with PostgreSQL
-2. **Schema creation**: Database tables with proper indexes
-3. **Connection pool**: Implement `database.go` with shared pgxpool
-4. **Migration tools**: Scripts to convert existing JSON cache
+### Phase 1: SQLite Infrastructure & Performance Validation
+1. **SQLite setup**: Create schema with FTS5 and persistent ID indexes
+2. **Performance PoC**: Build test database with realistic data (50k+ tracks)
+3. **Benchmarking**: Validate 1-5ms search performance with FTS5 queries
+4. **Database layer**: Implement `database.go` with SQLite backend
 
-### Phase 2: Background Refresh Service
-1. **Standalone binary**: Create `refresh-service/` package
-2. **Enhanced JXA**: Modify scripts to extract genre information
-3. **Batch operations**: Implement efficient bulk insert/update
-4. **Scheduling**: Setup cron job for automatic refreshes
+### Phase 2: Enhanced Refresh Service with Persistent IDs
+1. **JXA script enhancement**: Extract both track and playlist persistent IDs
+2. **Standalone binary**: Create `refresh-service/` with atomic SQLite transactions
+3. **Incremental sync**: Use persistent IDs for change detection
+4. **Playlist tracking**: Full playlist membership with persistent ID relationships
 
-### Phase 3: API Integration
-1. **Search replacement**: Replace `SearchTracksFromCache()` with database queries
-2. **Advanced filtering**: Add genre, rating, starred filters to MCP tools
-3. **Backward compatibility**: Maintain existing MCP resource interfaces
-4. **CLI updates**: Update CLI to use database backend
+### Phase 3: Database-Backed API with FTS5 Search
+1. **Search replacement**: Replace `SearchTracksFromCache()` with FTS5 database queries
+2. **Persistent ID lookup**: Add `GetTrackByPersistentID()` and `GetPlaylistByPersistentID()`
+3. **Advanced filtering**: Genre, rating, starred filters with SQL performance
+4. **Backward compatibility**: Maintain existing MCP tool interfaces with enhanced data
 
-### Phase 4: Migration & Testing
-1. **Data migration**: Convert existing JSON cache to database
-2. **Performance testing**: Ensure search performance matches current system (~1-5ms)
-3. **Integration testing**: Verify MCP server and CLI functionality
-4. **Cleanup**: Remove file-based cache system
+### Phase 4: Migration, Testing & Deployment
+1. **Data migration**: Convert existing JSON cache to SQLite with persistent ID mapping
+2. **Performance validation**: Ensure FTS5 search meets 1-5ms target in production
+3. **Integration testing**: Verify MCP server, CLI functionality with persistent IDs
+4. **Fallback mechanism**: Keep JSON cache as backup during initial deployment
+5. **Cleanup**: Remove file-based cache system after successful validation
 
-## 6. Database Technology Considerations
+## 6. Apple Music Persistent ID Integration Details
 
-### PostgreSQL vs SQLite Analysis
+### Understanding Apple Music Persistent IDs
 
-**CRITICAL PERFORMANCE CONCERN**: The current system achieves ~1-5ms search performance through in-memory JSON operations. This is a strict requirement that drives technology choice.
+**Track Persistent IDs:**
+- **Format**: 128-bit UUID represented as hexadecimal (e.g., `9F2DB5BF5802AF9A`)
+- **Stability**: Remains constant across library rebuilds, app restarts, and macOS updates
+- **Universality**: Same ID across all Apple Music clients (Mac, iOS, etc.)
+- **Usage**: Primary key for reliable track identification and playbook
 
-#### Option A: PostgreSQL (Original Plan)
-**Pros:**
-- Robust concurrent access
-- Advanced indexing (pg_trgm for text search)
-- Full SQL feature set
-- Excellent for future scaling
+**Playlist Persistent IDs:**
+- **Format**: Same 128-bit UUID format as tracks
+- **Stability**: Persistent across playlist renames and library changes
+- **Smart Playlists**: Have persistent IDs just like regular playlists
+- **System Playlists**: Library, Purchased, etc. have stable persistent IDs
 
-**Cons:**
-- **Performance Risk**: Network latency + query overhead likely exceeds 1-5ms target
-- More complex deployment (Docker, connection pooling)
-- May require hybrid in-memory caching to meet performance goals
+### Advantages of Persistent ID-Based Architecture
 
-#### Option B: SQLite (Alternative Recommendation)
-**Pros:**
-- **Zero network latency**: Embedded database = much better chance of meeting 1-5ms target
-- **Simplified deployment**: Single file, no server management
-- **FTS support**: Built-in Full-Text Search for fast text queries
-- **Excellent Go support**: `modernc.org/sqlite` (pure Go) or `mattn/go-sqlite3` (CGO)
-- **Concurrent reads**: Multiple read transactions, single writer (sufficient for our use case)
+**Database Benefits:**
+- **Reliable relationships**: Foreign keys based on stable persistent IDs
+- **Change detection**: Efficient incremental sync using persistent ID comparison
+- **Cross-session consistency**: Same track/playlist references across app restarts
+- **Rename handling**: Playlist/track renames don't break relationships
 
-**Cons:**
-- Single writer limitation (not an issue - only refresh service writes)
-- Fewer advanced features than PostgreSQL
-- File-based (though this matches our current cache approach)
+**Playback Benefits:**  
+- **Consistent playback**: Same persistent ID always plays the same track
+- **Playlist context**: Reliable playlist-based continuous playback
+- **Reliability**: Eliminates name encoding/parsing issues that caused intermittent failures
 
-### Recommended Approach: SQLite with Performance Validation
+### Persistent ID Migration from Current System
 
-Given the strict 1-5ms requirement and single-writer usage pattern, **SQLite appears better suited** for this application:
+**Current Issue**: 
+- Existing system uses persistent IDs correctly (as confirmed in previous debugging)
+- JSON cache structure already stores these IDs in the `id` field
+- Database migration can directly map `track.id` → `tracks.persistent_id`
 
+**Migration Mapping:**
+```go
+// JSON to SQLite migration
+type JSONTrack struct {
+    ID   string `json:"id"`   // Already contains persistent ID
+    Name string `json:"name"`
+    // ... other fields
+}
+
+func MigrateTrack(jsonTrack JSONTrack) Track {
+    return Track{
+        ID:   jsonTrack.ID,  // Direct mapping - no conversion needed
+        Name: jsonTrack.Name,
+        // ... other fields map directly
+    }
+}
+```
+
+## 7. SQLite Performance Optimization Strategy
+
+### FTS5 Search Performance Tuning
 ```sql
--- SQLite schema with FTS for fast search
-CREATE TABLE tracks_fts (
-    id INTEGER PRIMARY KEY,
-    itunes_id TEXT NOT NULL UNIQUE,
-    name TEXT NOT NULL,
-    artist TEXT NOT NULL,
-    album TEXT NOT NULL,
-    genre TEXT,
-    content TEXT -- Combined searchable text: name + artist + album
+-- Optimized FTS5 configuration for 1-5ms target
+CREATE VIRTUAL TABLE tracks_fts USING fts5(
+    persistent_id UNINDEXED, -- Don't index ID in FTS (use regular index)
+    name,
+    artist_name,
+    album_name,
+    genre_name,
+    playlist_names,
+    tokenize='porter ascii', -- ASCII tokenizer for performance
+    prefix=2,               -- Enable 2-character prefix matching
+    content='',             -- External content (faster than content=table)
+    columnsize=0            -- Disable column size tracking (faster writes)
 );
 
-CREATE VIRTUAL TABLE tracks_search USING fts5(
-    content,
-    content=tracks_fts,
-    content_rowid=id
-);
-
--- Triggers to keep FTS table synchronized
-CREATE TRIGGER tracks_fts_insert AFTER INSERT ON tracks_fts 
-BEGIN
-    INSERT INTO tracks_search(rowid, content) VALUES (new.id, new.content);
-END;
+-- Optimize database for read performance
+PRAGMA journal_mode = WAL;          -- Write-Ahead Logging for concurrent reads
+PRAGMA synchronous = NORMAL;        -- Balance safety vs performance
+PRAGMA cache_size = 10000;          -- 10MB cache for fast queries
+PRAGMA temp_store = memory;         -- Use memory for temporary tables
+PRAGMA mmap_size = 268435456;       -- 256MB memory-mapped I/O
 ```
 
-## 7. Revised Migration Strategy (SQLite-First)
+### Benchmark Target Performance
+- **Current JSON search**: ~1-5ms for 50k+ track libraries
+- **Target SQLite+FTS5**: Match or exceed current performance
+- **Acceptable fallback**: 10-15ms if search quality significantly improves
+- **Performance validation**: Test with real user libraries during migration
 
-### Phase 1: Performance Validation & Database Setup
-1. **SQLite PoC**: Create test database with realistic data (50k+ tracks)
-2. **Performance benchmarking**: Validate 1-5ms search target is achievable
-3. **If SQLite succeeds**: Proceed with SQLite implementation
-4. **If SQLite fails**: Fall back to PostgreSQL + hybrid in-memory cache
+## 8. Key Benefits of Apple Music Persistent ID Architecture
 
-### Phase 2: Schema & Ingestion Pipeline
-1. **SQLite setup**: Single file database with FTS indexes
-2. **Bulk ingestion**: Use SQLite's efficient batch insert capabilities
-3. **Atomic refresh**: Use transactions for safe library updates
+### Reliability Improvements
+- **Eliminates playback failures**: Root cause of previous intermittent issues was string matching
+- **Cross-platform consistency**: Same IDs work across Mac, iOS, Apple TV
+- **Rename resilience**: Track/playlist renames don't break saved searches or playlists
+- **Library rebuild safety**: Persistent IDs survive library reconstruction
 
-### Phase 3: Application Integration
-1. **Database layer**: Implement with SQLite backend
-2. **Search optimization**: Leverage FTS5 for fast text search
-3. **Backward compatibility**: Maintain existing MCP interfaces
+### Developer Experience
+- **Simplified debugging**: Consistent, readable hex IDs instead of internal DB integers  
+- **API reliability**: No more encoding/parsing issues with complex track names
+- **Future-proof**: Apple Music API uses these same persistent IDs
+- **Caching strategy**: Persistent IDs enable reliable cross-session caching
 
-### Phase 4: Deployment & Migration
-1. **Data migration**: Convert JSON cache to SQLite
-2. **Performance validation**: Ensure production performance meets targets
-3. **Cleanup**: Remove file-based cache system
+### Database Design Benefits
+- **Natural foreign keys**: Persistent IDs work directly as foreign key references
+- **Incremental sync**: Compare persistent ID lists to detect additions/removals
+- **Conflict resolution**: Persistent IDs provide canonical source of truth
+- **Backup/restore**: Database exports remain valid across different iTunes libraries
 
-## 8. Key Benefits of SQLite-Based Design
+## 9. Implementation Priority & Risk Assessment
 
-- **Performance-first**: Zero network latency maximizes chance of meeting 1-5ms target
-- **Operational simplicity**: No separate database server to manage
-- **Transactional safety**: ACID compliance for reliable library updates
-- **Full-text search**: Built-in FTS5 for efficient text queries
-- **Single file**: Easy backup, version control, and deployment
-- **Battle-tested**: SQLite is the most deployed database engine worldwide
-- **Go ecosystem**: Excellent tooling and ORM support
+### High Priority (Phase 1)
+- **SQLite schema creation** with persistent ID support
+- **FTS5 performance validation** with realistic data
+- **Basic database operations** (insert, search, retrieve)
 
-**Bottom Line**: SQLite's embedded nature and zero network latency make it the pragmatic choice for achieving the critical 1-5ms search performance requirement while still providing SQL capabilities and data persistence.
+### Medium Priority (Phase 2)  
+- **Enhanced refresh service** with incremental sync
+- **Playlist persistent ID extraction** and management
+- **Advanced filtering** (genre, rating, starred)
+
+### Low Priority (Phase 3)
+- **Migration tooling** from JSON cache
+- **Backup/restore mechanisms**  
+- **Database optimization** and maintenance tools
+
+### Risk Mitigation
+- **Performance fallback**: Keep JSON cache as backup during initial rollout
+- **Gradual migration**: Enable SQLite backend as opt-in feature initially
+- **A/B testing**: Compare search performance between JSON and SQLite backends
+- **Rollback plan**: Quick reversion to JSON cache if performance issues arise
+
+**Bottom Line**: Apple Music persistent IDs combined with SQLite FTS5 provides a robust, performant foundation that eliminates the root causes of previous playback reliability issues while maintaining the 1-5ms search performance requirement.

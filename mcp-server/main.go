@@ -75,10 +75,16 @@ func main() {
 		mcp.WithDescription("Updates the local library cache from the Music app. This can take several minutes for large libraries. Run this only if your library has changed significantly."),
 	)
 
+	// Create now playing tool
+	nowPlayingTool := mcp.NewTool("now_playing",
+		mcp.WithDescription("Gets the current playback status and track information from Apple Music."),
+	)
+
 	// Add tools to server
 	mcpServer.AddTool(searchTool, searchHandler)
 	mcpServer.AddTool(playTool, playHandler)
 	mcpServer.AddTool(refreshTool, refreshHandler)
+	mcpServer.AddTool(nowPlayingTool, nowPlayingHandler)
 
 	// Add MCP resources for cache access
 	cacheStatsResource := mcp.NewResource(
@@ -168,38 +174,37 @@ func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 		return mcp.NewToolResultError("Either playlist, album, track, or track_id parameter must be provided"), nil
 	}
 
-	err := itunes.PlayPlaylistTrack(playlist, album, track, trackID)
+	// Use the enhanced function that returns current track info
+	result, err := itunes.PlayPlaylistTrackWithStatus(playlist, album, track, trackID)
 	if err != nil {
-		if errors.Is(err, itunes.ErrScriptFailed) {
-			return mcp.NewToolResultError(fmt.Sprintf("Unable to control Apple Music: %v", err)), nil
-		}
-		return mcp.NewToolResultError(fmt.Sprintf("Playback failed: %v", err)), nil
+		return mcp.NewToolResultError(fmt.Sprintf("Playback operation failed: %v", err)), nil
 	}
 
-	// Build success message based on what was used
-	if trackID != "" {
-		if playlist != "" {
-			return mcp.NewToolResultText(fmt.Sprintf("Started playing track ID '%s' from playlist '%s'", trackID, playlist)), nil
-		} else if album != "" {
-			return mcp.NewToolResultText(fmt.Sprintf("Started playing track ID '%s' from album '%s'", trackID, album)), nil
-		} else {
-			return mcp.NewToolResultText(fmt.Sprintf("Started playing track by ID: %s", trackID)), nil
-		}
-	} else if track != "" {
-		if playlist != "" {
-			return mcp.NewToolResultText(fmt.Sprintf("Started playing track '%s' from playlist '%s'", track, playlist)), nil
-		} else if album != "" {
-			return mcp.NewToolResultText(fmt.Sprintf("Started playing track '%s' from album '%s'", track, album)), nil
-		} else {
-			return mcp.NewToolResultText(fmt.Sprintf("Started playing track: %s", track)), nil
-		}
-	} else if playlist != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Started playing playlist '%s'", playlist)), nil
-	} else if album != "" {
-		return mcp.NewToolResultText(fmt.Sprintf("Started playing album '%s'", album)), nil
+	if !result.Success {
+		return mcp.NewToolResultError(result.Message), nil
 	}
 
-	return mcp.NewToolResultText("Playback started"), nil
+	// Return detailed result with current track info
+	resultJSON, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultText(result.Message), nil
+	}
+
+	return mcp.NewToolResultText(string(resultJSON)), nil
+}
+
+func nowPlayingHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	status, err := itunes.GetNowPlaying()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get current playback status: %v", err)), nil
+	}
+
+	resultJSON, err := json.MarshalIndent(status, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal status: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(resultJSON)), nil
 }
 
 func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {

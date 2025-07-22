@@ -29,6 +29,33 @@ type Track struct {
 	Playlists  []string `json:"playlists"`
 }
 
+// NowPlayingTrack contains current track information with playback details
+type NowPlayingTrack struct {
+	ID              string `json:"id"`
+	Name            string `json:"name"`
+	Artist          string `json:"artist"`
+	Album           string `json:"album"`
+	Position        string `json:"position"`
+	Duration        string `json:"duration"`
+	PositionSeconds int    `json:"position_seconds"`
+	DurationSeconds int    `json:"duration_seconds"`
+}
+
+// NowPlayingStatus represents the current playback status
+type NowPlayingStatus struct {
+	Status  string           `json:"status"` // "playing", "paused", "stopped", "error"
+	Track   *NowPlayingTrack `json:"track,omitempty"`
+	Display string           `json:"display"` // Formatted display string
+	Message string           `json:"message"`
+}
+
+// PlayResult contains the result of a play operation with current track info
+type PlayResult struct {
+	Success    bool              `json:"success"`
+	Message    string            `json:"message"`
+	NowPlaying *NowPlayingStatus `json:"now_playing,omitempty"`
+}
+
 // PlayPlaylistTrack runs the embedded iTunes_Play_Playlist_Track.js script to play a playlist, album, or track.
 // If trackName is "", only the playlist/album will play. If trackID is provided, it takes priority over trackName.
 // Either playlistName or albumName can be provided for context, but not both.
@@ -252,4 +279,83 @@ func RefreshLibraryCache() error {
 	}
 
 	return nil
+}
+
+// GetNowPlaying runs the embedded iTunes_Now_Playing.js script to get current playback status
+func GetNowPlaying() (*NowPlayingStatus, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Create temporary file for the embedded script
+	tempFile, err := os.CreateTemp("", "itunes_now_playing_*.js")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+
+	if _, err := tempFile.WriteString(nowPlayingScript); err != nil {
+		return nil, fmt.Errorf("failed to write now playing script to temp file: %w", err)
+	}
+	tempFile.Close()
+
+	cmd := exec.CommandContext(ctx, "osascript", "-l", "JavaScript", tempFile.Name())
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err = cmd.Run()
+	if err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrScriptFailed, stderr.String())
+	}
+
+	// Parse the JSON response
+	responseJSON := stdout.Bytes()
+	if len(responseJSON) == 0 {
+		return nil, errors.New("now playing script returned no data")
+	}
+
+	var status NowPlayingStatus
+	if err := json.Unmarshal(responseJSON, &status); err != nil {
+		return nil, fmt.Errorf("failed to parse now playing script response: %w", err)
+	}
+
+	return &status, nil
+}
+
+// PlayPlaylistTrackWithStatus runs PlayPlaylistTrack and returns the result with current track info
+func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID string) (*PlayResult, error) {
+	// First, attempt to play the track
+	err := PlayPlaylistTrack(playlistName, albumName, trackName, trackID)
+
+	result := &PlayResult{
+		Success: err == nil,
+	}
+
+	if err != nil {
+		result.Message = fmt.Sprintf("Playback failed: %v", err)
+		return result, nil
+	}
+
+	// Give Apple Music a moment to start playing
+	time.Sleep(1 * time.Second)
+
+	// Get current playing status
+	nowPlaying, nowPlayingErr := GetNowPlaying()
+	if nowPlayingErr != nil {
+		// Don't fail the whole operation if we can't get now playing info
+		result.Message = "Playback started, but could not get current track info"
+		return result, nil
+	}
+
+	result.NowPlaying = nowPlaying
+
+	// Create a success message based on what's playing
+	if nowPlaying.Status == "playing" && nowPlaying.Track != nil {
+		result.Message = fmt.Sprintf("Now playing: %s", nowPlaying.Display)
+	} else {
+		result.Message = "Playback command sent successfully"
+	}
+
+	return result, nil
 }

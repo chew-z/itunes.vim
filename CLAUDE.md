@@ -14,15 +14,18 @@ go build -o bin/itunes itunes.go
 go build -o bin/mcp-itunes ./mcp-server
 
 # Run the CLI program
-./bin/itunes search <query>          # Search iTunes library for tracks
-./bin/itunes play <playlist> [track] # Play playlist or specific track
+./bin/itunes search <query>                           # Search iTunes library for tracks
+./bin/itunes play <playlist> [album] [track] [trackID] # Play with context support
+./bin/itunes now-playing                              # Get current playback status
+./bin/itunes status                                   # Alias for now-playing
 
 # Run the MCP server (for use with Claude Code and other LLM applications)
 ./bin/mcp-itunes                     # Starts MCP server via stdio transport
 
 # Test the programs
 go run itunes.go search "jazz"
-go run itunes.go play "My Playlist"
+go run itunes.go play "" "Album Name" "" "TRACK_ID_FROM_SEARCH"
+go run itunes.go now-playing
 go run ./mcp-server              # Test MCP server startup
 ```
 
@@ -32,12 +35,11 @@ This is a Go-based iTunes/Apple Music integration tool that bridges between comm
 
 ### Core Components
 
-- **Shared Library** (`itunes/itunes.go`): Core functions for iTunes integration, including native Go search
-- **CLI Application** (`itunes.go`): Command-line interface with search and play commands  
+- **Shared Library** (`itunes/itunes.go`): Core functions for iTunes integration, including native Go search and status retrieval
+- **CLI Application** (`itunes.go`): Command-line interface with search, play, and now-playing commands  
 - **MCP Server** (`mcp-server/main.go`): Model Context Protocol server for LLM integration
-- **JXA Scripts** (`itunes/scripts/`): JavaScript automation scripts for Apple Music control (library refresh and playback only)
+- **JXA Scripts** (`itunes/scripts/`): JavaScript automation scripts for Apple Music control (library refresh, playback, and status)
 - **Cache System** (`itunes/cache.go`): Dual-level (memory + file) caching system
-- **Vim Plugin** (deprecated): Legacy Vim integration - scripts preserved in `autoload/` as symlinks
 
 ### Data Flow
 
@@ -45,9 +47,10 @@ This is a Go-based iTunes/Apple Music integration tool that bridges between comm
 - **CLI**: Go CLI → Direct JSON cache read → Native Go search → Results
 - **MCP Server**: LLM client → MCP server → Direct JSON cache read → Native Go search → Results
 
-**Library Refresh & Playback (AppleScript/JXA bridge to Apple Music):**
+**Library Refresh, Playback & Status (AppleScript/JXA bridge to Apple Music):**
 - **Library Refresh**: Go → JXA script → Apple Music app → JSON cache file
-- **Playback**: Go → JXA script → Apple Music app → Playback control
+- **Playback**: Go → JXA script → Apple Music app → Playback control → Current track status
+- **Now Playing**: Go → JXA script → Apple Music app → Current playback status
 
 ### Key Dependencies
 
@@ -83,7 +86,12 @@ type Track struct {
   - `playlist` (string, optional): **For playlist context** - Use when playing from a user-created playlist. Use exact `collection` field value or a value from the `playlists` array.
   - `album` (string, optional): **For album context** - Use the exact `album` field value from search results. Provides album context for continuous playback.
   - `track` (string, optional): **FALLBACK** - Use the exact `name` field value from search results. Only use if `track_id` not available. Less reliable with complex names.
-- **Returns**: Text confirmation of playback status with context used
+- **Returns**: **Enhanced** - JSON object with playback result and current track info after a 1-second delay
+
+### `now_playing`
+- **Description**: Get current playback status and track information from Apple Music
+- **Parameters**: None
+- **Returns**: JSON object with current track details, playback position, and player status ("playing", "paused", "stopped", "error")
 
 ### `refresh_library`
 - **Description**: Refresh iTunes library cache (1-3 minutes for large libraries)

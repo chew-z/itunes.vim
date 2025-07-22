@@ -80,23 +80,58 @@ func main() {
 
 	case "play":
 		if len(os.Args) < 3 {
-			fmt.Println("Usage: itunes play <collection> [track]")
-			fmt.Println("Use the 'collection' field from search results as the collection name")
+			fmt.Println("Usage: itunes play <playlist> [album] [track] [trackID]")
+			fmt.Println("  playlist: playlist name (use empty string \"\" if not applicable)")
+			fmt.Println("  album: album name for album context (optional)")
+			fmt.Println("  track: track name (optional)")
+			fmt.Println("  trackID: track ID from search results (recommended, most reliable)")
 			return
 		}
+
+		// Parse arguments with support for empty strings
 		playlist := os.Args[2]
-		var track string
+		var album, track, trackID string
+
 		if len(os.Args) > 3 {
-			track = os.Args[3]
+			album = os.Args[3]
+		}
+		if len(os.Args) > 4 {
+			track = os.Args[4]
+		}
+		if len(os.Args) > 5 {
+			trackID = os.Args[5]
 		}
 
-		if err := itunes.PlayPlaylistTrack(playlist, "", track, ""); err != nil {
+		if err := itunes.PlayPlaylistTrack(playlist, album, track, trackID); err != nil {
 			fmt.Println("Play failed:", err)
 		} else {
 			fmt.Println("Playback started.")
 		}
 
+	case "now-playing", "status":
+		status, err := itunes.GetNowPlaying()
+		if err != nil {
+			fmt.Println("Failed to get current status:", err)
+			return
+		}
+
+		if status.Status == "playing" && status.Track != nil {
+			fmt.Printf("Status: %s\n", status.Status)
+			fmt.Printf("Track: %s\n", status.Display)
+			fmt.Printf("Album: %s\n", status.Track.Album)
+			fmt.Printf("Position: %s / %s\n", status.Track.Position, status.Track.Duration)
+			if status.Track.ID != "" {
+				fmt.Printf("Track ID: %s\n", status.Track.ID)
+			}
+		} else {
+			fmt.Printf("Status: %s\n", status.Status)
+			if status.Message != "" {
+				fmt.Printf("Message: %s\n", status.Message)
+			}
+		}
+
 	default:
 		fmt.Println("Unknown command:", command)
+		fmt.Println("Available commands: search, play, now-playing, status")
 	}
 }
