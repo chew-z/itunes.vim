@@ -22,6 +22,19 @@ func main() {
 	// Initialize global cache manager
 	cacheManager = itunes.NewCacheManager()
 
+	// Check if database mode is enabled
+	useDatabase := os.Getenv("ITUNES_USE_DATABASE") == "true"
+	if useDatabase {
+		// Initialize database
+		if err := itunes.InitDatabase(); err != nil {
+			fmt.Printf("Warning: Failed to initialize database, falling back to JSON cache: %v\n", err)
+		} else {
+			defer itunes.CloseDatabase()
+			itunes.UseDatabase = true
+			fmt.Println("Using SQLite database for search")
+		}
+	}
+
 	// Start periodic cleanup of expired cache files
 	go func() {
 		// Clean up immediately on startup
@@ -135,7 +148,7 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	}
 
 	// Cache miss - perform actual search
-	tracks, err := itunes.SearchTracksFromCache(query)
+	tracks, err := itunes.SearchTracks(query)
 	if err != nil {
 		if errors.Is(err, itunes.ErrNoTracksFound) {
 			return mcp.NewToolResultText("No tracks found matching the query."), nil

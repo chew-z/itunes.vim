@@ -21,12 +21,48 @@ var (
 
 // Track describes one track from the script's output
 type Track struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Album      string   `json:"album"`
-	Collection string   `json:"collection"`
-	Artist     string   `json:"artist"`
-	Playlists  []string `json:"playlists"`
+	ID           string   `json:"id"`
+	PersistentID string   `json:"persistent_id,omitempty"` // Apple Music persistent ID (Phase 2)
+	Name         string   `json:"name"`
+	Album        string   `json:"album"`
+	Collection   string   `json:"collection"` // Primary playlist name or album if not in a playlist
+	Artist       string   `json:"artist"`
+	Playlists    []string `json:"playlists"`         // All playlists containing this track
+	Genre        string   `json:"genre,omitempty"`   // Phase 2: Track genre
+	Rating       int      `json:"rating,omitempty"`  // Phase 2: Track rating (0-100)
+	Starred      bool     `json:"starred,omitempty"` // Phase 2: Loved/starred status
+}
+
+// PlaylistData represents playlist metadata with persistent ID (Phase 2)
+type PlaylistData struct {
+	ID          string `json:"id"` // Persistent ID
+	Name        string `json:"name"`
+	SpecialKind string `json:"special_kind"` // "none" for user playlists
+	TrackCount  int    `json:"track_count"`
+	Genre       string `json:"genre,omitempty"`
+}
+
+// RefreshStats contains statistics from a library refresh operation
+type RefreshStats struct {
+	TotalTracks    int `json:"total_tracks"`
+	TotalPlaylists int `json:"total_playlists"`
+	ProcessingTime int `json:"processing_time_ms"`
+}
+
+// RefreshData contains the tracks and playlists from a refresh operation
+type RefreshData struct {
+	Tracks    []Track        `json:"tracks"`
+	Playlists []PlaylistData `json:"playlists"`
+	Stats     RefreshStats   `json:"stats"`
+}
+
+// RefreshResponse represents the complete response from the refresh script
+type RefreshResponse struct {
+	Status  string                 `json:"status"`
+	Message string                 `json:"message"`
+	Data    *RefreshData           `json:"data"`
+	Error   string                 `json:"error,omitempty"`
+	Details map[string]interface{} `json:"details,omitempty"`
 }
 
 // NowPlayingTrack contains current track information with playback details

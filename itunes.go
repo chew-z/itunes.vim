@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"strings"
 
 	"itunes/itunes"
 )
@@ -14,10 +15,26 @@ func main() {
 		fmt.Println("Commands:")
 		fmt.Println("  search <query>             - Search iTunes library for tracks")
 		fmt.Println("  play <collection> [track]  - Play album/playlist (use 'collection' field from search results)")
+		fmt.Println("\nEnvironment variables:")
+		fmt.Println("  ITUNES_USE_DATABASE=true   - Use SQLite database instead of JSON cache")
 		return
 	}
 
 	command := os.Args[1]
+
+	// Check if database mode is enabled
+	useDatabase := strings.ToLower(os.Getenv("ITUNES_USE_DATABASE")) == "true"
+	if useDatabase {
+		// Initialize database
+		if err := itunes.InitDatabase(); err != nil {
+			fmt.Printf("Warning: Failed to initialize database, falling back to JSON cache: %v\n", err)
+			useDatabase = false
+		} else {
+			defer itunes.CloseDatabase()
+			itunes.UseDatabase = true
+			fmt.Println("Using SQLite database for search")
+		}
+	}
 
 	// Initialize cache manager
 	cacheManager := itunes.NewCacheManager()
@@ -48,7 +65,7 @@ func main() {
 		}
 
 		// Cache miss - perform actual search
-		tracks, err := itunes.SearchTracksFromCache(query)
+		tracks, err := itunes.SearchTracks(query)
 		if err != nil {
 			if errors.Is(err, itunes.ErrNoTracksFound) {
 				fmt.Println("No tracks found.")
