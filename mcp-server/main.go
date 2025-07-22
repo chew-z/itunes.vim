@@ -69,11 +69,61 @@ func main() {
 		mcp.WithDescription("Gets the current playback status and track information from Apple Music."),
 	)
 
+	// Create list playlists tool
+	listPlaylistsTool := mcp.NewTool("list_playlists",
+		mcp.WithDescription("Lists all user playlists in the iTunes/Apple Music library with metadata."),
+	)
+
+	// Create get playlist tracks tool
+	getPlaylistTracksTool := mcp.NewTool("get_playlist_tracks",
+		mcp.WithDescription("Gets all tracks in a specific playlist."),
+		mcp.WithString("playlist",
+			mcp.Required(),
+			mcp.Description("The name or persistent ID of the playlist."),
+		),
+		mcp.WithBoolean("use_id",
+			mcp.Description("Set to true if providing a persistent ID instead of name. Default is false (use name)."),
+		),
+	)
+
+	// Create advanced search tool
+	searchAdvancedTool := mcp.NewTool("search_advanced",
+		mcp.WithDescription("Advanced search with filters for genre, artist, album, rating, and starred status."),
+		mcp.WithString("query",
+			mcp.Required(),
+			mcp.Description("The search query for track names, artists, or albums."),
+		),
+		mcp.WithString("genre",
+			mcp.Description("Filter by genre (partial match supported)."),
+		),
+		mcp.WithString("artist",
+			mcp.Description("Filter by artist name (partial match supported)."),
+		),
+		mcp.WithString("album",
+			mcp.Description("Filter by album name (partial match supported)."),
+		),
+		mcp.WithString("playlist",
+			mcp.Description("Filter to tracks in a specific playlist."),
+		),
+		mcp.WithNumber("min_rating",
+			mcp.Description("Minimum rating (0-100). Only returns tracks with rating >= this value."),
+		),
+		mcp.WithBoolean("starred",
+			mcp.Description("If true, only return starred/loved tracks. If false, return all tracks."),
+		),
+		mcp.WithNumber("limit",
+			mcp.Description("Maximum number of results to return. Default is 15."),
+		),
+	)
+
 	// Add tools to server
 	mcpServer.AddTool(searchTool, searchHandler)
 	mcpServer.AddTool(playTool, playHandler)
 	mcpServer.AddTool(refreshTool, refreshHandler)
 	mcpServer.AddTool(nowPlayingTool, nowPlayingHandler)
+	mcpServer.AddTool(listPlaylistsTool, listPlaylistsHandler)
+	mcpServer.AddTool(getPlaylistTracksTool, getPlaylistTracksHandler)
+	mcpServer.AddTool(searchAdvancedTool, searchAdvancedHandler)
 
 	// Add MCP resources for database statistics
 	dbStatsResource := mcp.NewResource(
@@ -83,7 +133,16 @@ func main() {
 		mcp.WithMIMEType("application/json"),
 	)
 
+	// Add playlists resource
+	playlistsResource := mcp.NewResource(
+		"itunes://database/playlists",
+		"Playlists List",
+		mcp.WithResourceDescription("List of all playlists in the iTunes library with metadata"),
+		mcp.WithMIMEType("application/json"),
+	)
+
 	mcpServer.AddResource(dbStatsResource, dbStatsHandler)
+	mcpServer.AddResource(playlistsResource, playlistsHandler)
 
 	// Start stdio server
 	if err := server.ServeStdio(mcpServer); err != nil {
@@ -213,6 +272,142 @@ func dbStatsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp
 			URI:      request.Params.URI,
 			MIMEType: "application/json",
 			Text:     string(statsJSON),
+		},
+	}, nil
+}
+
+func listPlaylistsHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	playlists, err := itunes.ListPlaylists()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to list playlists: %v", err)), nil
+	}
+
+	// Convert to a more user-friendly format
+	type PlaylistInfo struct {
+		Name         string `json:"name"`
+		PersistentID string `json:"persistent_id"`
+		TrackCount   int    `json:"track_count"`
+		Genre        string `json:"genre,omitempty"`
+		SpecialKind  string `json:"special_kind,omitempty"`
+	}
+
+	playlistInfos := make([]PlaylistInfo, len(playlists))
+	for i, p := range playlists {
+		playlistInfos[i] = PlaylistInfo{
+			Name:         p.Name,
+			PersistentID: p.PersistentID,
+			TrackCount:   p.TrackCount,
+			Genre:        p.Genre,
+			SpecialKind:  p.SpecialKind,
+		}
+	}
+
+	result, err := json.MarshalIndent(playlistInfos, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal playlists: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(result)), nil
+}
+
+func getPlaylistTracksHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	playlist, err := request.RequireString("playlist")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid playlist parameter: %v", err)), nil
+	}
+
+	useID := request.GetBool("use_id", false)
+
+	tracks, err := itunes.GetPlaylistTracks(playlist, useID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get playlist tracks: %v", err)), nil
+	}
+
+	if len(tracks) == 0 {
+		return mcp.NewToolResultText("No tracks found in the specified playlist."), nil
+	}
+
+	result, err := json.MarshalIndent(tracks, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal tracks: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(result)), nil
+}
+
+func searchAdvancedHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	query, err := request.RequireString("query")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid query parameter: %v", err)), nil
+	}
+
+	// Build search filters from parameters
+	filters := &database.SearchFilters{}
+
+	if genre := request.GetString("genre", ""); genre != "" {
+		filters.Genre = genre
+	}
+
+	if artist := request.GetString("artist", ""); artist != "" {
+		filters.Artist = artist
+	}
+
+	if album := request.GetString("album", ""); album != "" {
+		filters.Album = album
+	}
+
+	if playlist := request.GetString("playlist", ""); playlist != "" {
+		filters.Playlist = playlist
+	}
+
+	if minRating := request.GetFloat("min_rating", 0); minRating > 0 {
+		filters.MinRating = int(minRating)
+	}
+
+	// Check if starred parameter was provided
+	args := request.GetArguments()
+	if _, hasStarred := args["starred"]; hasStarred {
+		starred := request.GetBool("starred", false)
+		filters.Starred = &starred
+	}
+
+	if limit := request.GetFloat("limit", 0); limit > 0 {
+		filters.Limit = int(limit)
+	}
+
+	// Search using database with filters
+	tracks, err := itunes.SearchTracksFromDatabase(query, filters)
+	if err != nil {
+		if errors.Is(err, itunes.ErrNoTracksFound) {
+			return mcp.NewToolResultText("No tracks found matching the query and filters."), nil
+		}
+		return mcp.NewToolResultError(fmt.Sprintf("Advanced search failed: %v", err)), nil
+	}
+
+	result, err := json.MarshalIndent(tracks, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal results: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(result)), nil
+}
+
+func playlistsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	playlists, err := itunes.ListPlaylists()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get playlists: %w", err)
+	}
+
+	playlistsJSON, err := json.MarshalIndent(playlists, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal playlists: %w", err)
+	}
+
+	return []mcp.ResourceContents{
+		&mcp.TextResourceContents{
+			URI:      request.Params.URI,
+			MIMEType: "application/json",
+			Text:     string(playlistsJSON),
 		},
 	}, nil
 }

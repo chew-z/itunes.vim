@@ -547,6 +547,14 @@ func GetDatabaseStats() (*database.DatabaseStats, error) {
 	return dbManager.GetStats()
 }
 
+// ListPlaylists returns all user playlists from the database
+func ListPlaylists() ([]database.Playlist, error) {
+	if dbManager == nil {
+		return nil, errors.New("database not initialized")
+	}
+	return dbManager.ListPlaylists()
+}
+
 // SearchTracks is the main search function that uses database by default
 func SearchTracks(query string) ([]Track, error) {
 	if UseDatabase && dbManager != nil {

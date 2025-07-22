@@ -22,19 +22,13 @@ Build a standalone refresh service that efficiently syncs Apple Music changes to
    - Build efficient update operations for minimal database impact
    - Track sync statistics and performance metrics
 
-4. **Create scheduling support in `refresh-service/scheduler.go`**:
-   - Support for cron-like scheduling
-   - Lock file management to prevent concurrent refreshes
-   - Health checks and service monitoring
-   - Graceful shutdown handling
-
-5. **Add comprehensive tests in `refresh-service/`**:
+4. **Add comprehensive tests in `refresh-service/`**:
    - Test incremental sync with mock data changes
    - Verify change detection algorithms
    - Test concurrent access handling
    - Performance tests with large library changes
 
-6. **Update CLAUDE.md with refresh service documentation**:
+5. **Update CLAUDE.md with refresh service documentation**:
    - Build command: `go build -o bin/itunes-refresh ./refresh-service`
    - Usage examples and scheduling recommendations
    - Monitoring and troubleshooting guide
@@ -49,8 +43,8 @@ Build a standalone refresh service that efficiently syncs Apple Music changes to
 
 ## Success Criteria
 
-✅ Standalone refresh service builds and runs independently  
-✅ Incremental sync detects changes efficiently  
-✅ Change detection algorithms work correctly  
-✅ Concurrent access is handled safely  
+✅ Standalone refresh service builds and runs independently
+✅ Incremental sync detects changes efficiently
+✅ Change detection algorithms work correctly
+✅ Concurrent access is handled safely
 ✅ Performance is significantly improved over full refresh

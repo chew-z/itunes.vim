@@ -13,10 +13,18 @@ import (
 )
 
 // Constants for database configuration
-const (
-	PrimaryDBPath = "~/Music/iTunes/itunes_library.db"
-	BackupDBPath  = "~/Music/iTunes/itunes_library_backup.db"
+var (
+	PrimaryDBPath = getDBPath("ITUNES_DB_PATH", "~/Music/iTunes/itunes_library.db")
+	BackupDBPath  = getDBPath("ITUNES_BACKUP_DB_PATH", "~/Music/iTunes/itunes_library_backup.db")
 )
+
+// getDBPath returns the database path from environment variable or default
+func getDBPath(envVar, defaultPath string) string {
+	if path := os.Getenv(envVar); path != "" {
+		return path
+	}
+	return defaultPath
+}
 
 // DatabaseManager handles all database operations
 type DatabaseManager struct {

@@ -31,6 +31,10 @@ go run itunes.go play "" "Album Name" "" "TRACK_ID_FROM_SEARCH"
 go run itunes.go now-playing
 go run ./mcp-server              # Test MCP server startup
 
+# Test with custom database path
+ITUNES_DB_PATH=/tmp/test.db ./bin/itunes-migrate
+ITUNES_DB_PATH=/tmp/test.db ./bin/itunes search "jazz"
+
 # Phase 2: SQLite Database Testing & Migration
 go run database_validate.go      # Validate SQLite schema and run performance benchmarks
 go test ./database -v            # Run all database tests
@@ -150,6 +154,31 @@ Phase 2 introduces a SQLite database backend with Apple Music Persistent ID supp
 - **Parameters**: None
 - **Warning**: Resource-intensive operation - only use with user approval
 
+### `list_playlists`
+- **Description**: Lists all user playlists in the iTunes/Apple Music library with metadata
+- **Parameters**: None
+- **Returns**: JSON array of playlists with `name`, `persistent_id`, `track_count`, `genre`, and `special_kind` fields
+
+### `get_playlist_tracks`
+- **Description**: Gets all tracks in a specific playlist
+- **Parameters**:
+  - `playlist` (string, required): The name or persistent ID of the playlist
+  - `use_id` (boolean, optional): Set to true if providing a persistent ID instead of name. Default is false (use name)
+- **Returns**: JSON array of tracks in the playlist with full metadata
+
+### `search_advanced`
+- **Description**: Advanced search with filters for genre, artist, album, rating, and starred status
+- **Parameters**:
+  - `query` (string, required): The search query for track names, artists, or albums
+  - `genre` (string, optional): Filter by genre (partial match supported)
+  - `artist` (string, optional): Filter by artist name (partial match supported)
+  - `album` (string, optional): Filter by album name (partial match supported)
+  - `playlist` (string, optional): Filter to tracks in a specific playlist
+  - `min_rating` (number, optional): Minimum rating (0-100). Only returns tracks with rating >= this value
+  - `starred` (boolean, optional): If true, only return starred/loved tracks. If false, return all tracks
+  - `limit` (number, optional): Maximum number of results to return. Default is 15
+- **Returns**: JSON array of matching tracks with metadata
+
 ## Usage Patterns
 
 **BEST PRACTICE: ID-based with album context (continuous playback):**
@@ -183,24 +212,29 @@ Phase 2 introduces a SQLite database backend with Apple Music Persistent ID supp
 - For empty `collection` fields: ID-based lookup works universally
 - Track ID lookup is immune to encoding/character issues that affect name matching
 
-## Caching System
+## Database System
 
-**Dual-Level Caching:**
-- **Memory Cache**: Fast in-memory storage (10-minute TTL)
-- **File Cache**: Persistent storage in `$TMPDIR/itunes-cache/`
+**SQLite with FTS5:**
+- **Primary Storage**: SQLite database at `~/.itunes/itunes.db`
+- **Search Engine**: FTS5 full-text search with relevance ranking
+- **Persistent IDs**: Apple Music's stable identifiers for reliable track identification
 
 **Performance:**
-- **Search operations**: Native Go JSON parsing and search (~1-5ms) - **NO AppleScript overhead**
-- **Cached search**: Returns instantly from memory cache (~1ms)
-- **Library refresh**: JXA script execution (~2-3 minutes for full library scan)
-- **CLI**: Saves results to `$TMPDIR/itunes-cache/search_results.json`
-- **MCP**: Stores in memory + file cache for cross-session persistence
+- **Search operations**: FTS5 database search (<10ms) with advanced filtering
+- **Cached search**: Database-level query caching (<1ms for repeated queries)
+- **Library refresh**: JXA script execution (~2-3 minutes) followed by database migration
+- **Database size**: ~760 bytes per track including indexes
+- **Search limit**: Configurable via `ITUNES_SEARCH_LIMIT` environment variable (default: 15)
+
+**Environment Variables:**
+- `ITUNES_DB_PATH`: Override the primary database path (default: `~/Music/iTunes/itunes_library.db`)
+- `ITUNES_BACKUP_DB_PATH`: Override the backup database path (default: `~/Music/iTunes/itunes_library_backup.db`)
+- `ITUNES_SEARCH_LIMIT`: Set the maximum number of search results (default: 15)
 
 ## MCP Resources
 
-- `itunes://cache/stats` - Cache statistics and metadata
-- `itunes://cache/queries` - List of all cached search queries
-- `itunes://cache/latest` - Most recent search results
+- `itunes://database/stats` - Database statistics and metadata (track count, playlist count, database size, etc.)
+- `itunes://database/playlists` - List of all playlists in the iTunes library with metadata
 
 ## Recent Critical Updates
 
