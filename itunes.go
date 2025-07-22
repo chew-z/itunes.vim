@@ -1,10 +1,9 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"os"
-	"strings"
+	"strconv"
 
 	"itunes/itunes"
 )
@@ -16,28 +15,27 @@ func main() {
 		fmt.Println("  search <query>             - Search iTunes library for tracks")
 		fmt.Println("  play <collection> [track]  - Play album/playlist (use 'collection' field from search results)")
 		fmt.Println("\nEnvironment variables:")
-		fmt.Println("  ITUNES_USE_DATABASE=true   - Use SQLite database instead of JSON cache")
+		fmt.Println("  ITUNES_SEARCH_LIMIT=<num>  - Set search result limit (default: 15)")
 		return
 	}
 
 	command := os.Args[1]
 
-	// Check if database mode is enabled
-	useDatabase := strings.ToLower(os.Getenv("ITUNES_USE_DATABASE")) == "true"
-	if useDatabase {
-		// Initialize database
-		if err := itunes.InitDatabase(); err != nil {
-			fmt.Printf("Warning: Failed to initialize database, falling back to JSON cache: %v\n", err)
-			useDatabase = false
-		} else {
-			defer itunes.CloseDatabase()
-			itunes.UseDatabase = true
-			fmt.Println("Using SQLite database for search")
+	// Initialize database (now default mode)
+	if err := itunes.InitDatabase(); err != nil {
+		fmt.Printf("Error: Failed to initialize database: %v\n", err)
+		fmt.Println("Please ensure the database exists by running: itunes-migrate")
+		return
+	}
+	defer itunes.CloseDatabase()
+
+	// Get search limit from environment
+	searchLimit := 15
+	if limitStr := os.Getenv("ITUNES_SEARCH_LIMIT"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
+			searchLimit = limit
 		}
 	}
-
-	// Initialize cache manager
-	cacheManager := itunes.NewCacheManager()
 
 	switch command {
 	case "search":
@@ -47,52 +45,22 @@ func main() {
 		}
 		query := os.Args[2]
 
-		// Check cache first
-		if cachedTracks, found := cacheManager.Get(query); found {
-			fmt.Println("(Using cached results)")
-			tracks := cachedTracks
-
-			// Save to latest results file for backward compatibility
-			if err := cacheManager.SaveLatestResults(tracks); err != nil {
-				fmt.Printf("Warning: Could not save results file: %v\n", err)
-			}
-
-			fmt.Printf("Search results saved to %s/search_results.json\n", cacheManager.GetCacheDir())
-			for _, t := range tracks {
-				fmt.Printf("%s by %s [%s]\n", t.Name, t.Artist, t.Collection)
-			}
-			return
-		}
-
-		// Cache miss - perform actual search
+		// Search using database
 		tracks, err := itunes.SearchTracks(query)
 		if err != nil {
-			if errors.Is(err, itunes.ErrNoTracksFound) {
-				fmt.Println("No tracks found.")
-			} else {
-				fmt.Println("Error:", err)
-			}
+			fmt.Printf("Error searching tracks: %v\n", err)
 			return
 		}
 
 		if len(tracks) == 0 {
-			fmt.Println("No tracks found.")
+			fmt.Println("No tracks found")
 			return
 		}
 
-		// Cache the results
-		if err := cacheManager.Set(query, tracks); err != nil {
-			fmt.Printf("Warning: Could not cache results: %v\n", err)
-		}
-
-		// Save to latest results file for backward compatibility
-		if err := cacheManager.SaveLatestResults(tracks); err != nil {
-			fmt.Printf("Warning: Could not save results file: %v\n", err)
-		}
-
-		fmt.Printf("Search results saved to %s/search_results.json\n", cacheManager.GetCacheDir())
+		// Display results
+		fmt.Printf("Found %d tracks (limit: %d):\n", len(tracks), searchLimit)
 		for _, t := range tracks {
-			fmt.Printf("%s by %s [%s]\n", t.Name, t.Artist, t.Collection)
+			fmt.Printf("%s by %s [%s] (ID: %s)\n", t.Name, t.Artist, t.Collection, t.ID)
 		}
 
 	case "play":

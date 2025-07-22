@@ -3,14 +3,18 @@ package itunes
 import (
 	"bytes"
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+
+	"itunes/database"
 )
 
 // Exported error variables for better error handling
@@ -394,4 +398,160 @@ func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID str
 	}
 
 	return result, nil
+}
+
+// Database integration variables
+var (
+	dbManager     *database.DatabaseManager
+	searchManager *database.SearchManager
+	UseDatabase   = true // Database mode is now default
+	SearchLimit   = 15   // Default search limit, can be overridden by ITUNES_SEARCH_LIMIT env var
+)
+
+// InitDatabase initializes the SQLite database connection
+func InitDatabase() error {
+	// Get search limit from environment if set
+	if limitStr := os.Getenv("ITUNES_SEARCH_LIMIT"); limitStr != "" {
+		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
+			SearchLimit = limit
+		}
+	}
+
+	// Initialize database manager
+	dm, err := database.NewDatabaseManager(database.PrimaryDBPath)
+	if err != nil {
+		return fmt.Errorf("failed to initialize database: %w", err)
+	}
+
+	// Run migrations to ensure schema is up to date
+	if err := dm.RunMigrations(); err != nil {
+		dm.Close()
+		return fmt.Errorf("failed to run database migrations: %w", err)
+	}
+
+	dbManager = dm
+	searchManager = database.NewSearchManager(dm)
+	return nil
+}
+
+// CloseDatabase closes the database connection
+func CloseDatabase() {
+	if dbManager != nil {
+		dbManager.Close()
+		dbManager = nil
+		searchManager = nil
+	}
+}
+
+// SearchTracksFromDatabase searches tracks using the SQLite database with FTS5
+func SearchTracksFromDatabase(query string, filters *database.SearchFilters) ([]Track, error) {
+	if dbManager == nil {
+		return nil, errors.New("database not initialized")
+	}
+
+	// Apply default search limit if not specified in filters
+	if filters == nil {
+		filters = &database.SearchFilters{Limit: SearchLimit}
+	} else if filters.Limit <= 0 {
+		filters.Limit = SearchLimit
+	}
+
+	// Use search manager for cached search
+	dbTracks, err := searchManager.SearchWithCache(query, filters)
+	if err != nil {
+		return nil, fmt.Errorf("database search failed: %w", err)
+	}
+
+	// Convert database tracks to API tracks
+	tracks := make([]Track, len(dbTracks))
+	for i, dbTrack := range dbTracks {
+		tracks[i] = Track{
+			ID:           dbTrack.PersistentID, // Use persistent ID as the main ID
+			PersistentID: dbTrack.PersistentID,
+			Name:         dbTrack.Name,
+			Album:        dbTrack.Album,
+			Collection:   dbTrack.Collection,
+			Artist:       dbTrack.Artist,
+			Playlists:    dbTrack.Playlists,
+			Genre:        dbTrack.Genre,
+			Rating:       dbTrack.Rating,
+			Starred:      dbTrack.Starred,
+		}
+	}
+
+	return tracks, nil
+}
+
+// GetTrackByPersistentID retrieves a single track by its persistent ID
+func GetTrackByPersistentID(persistentID string) (*Track, error) {
+	if dbManager == nil {
+		return nil, errors.New("database not initialized")
+	}
+
+	dbTrack, err := dbManager.GetTrackByPersistentID(persistentID)
+	if err != nil {
+		return nil, err
+	}
+
+	track := &Track{
+		ID:           dbTrack.PersistentID,
+		PersistentID: dbTrack.PersistentID,
+		Name:         dbTrack.Name,
+		Album:        dbTrack.Album,
+		Collection:   dbTrack.Collection,
+		Artist:       dbTrack.Artist,
+		Playlists:    dbTrack.Playlists,
+		Genre:        dbTrack.Genre,
+		Rating:       dbTrack.Rating,
+		Starred:      dbTrack.Starred,
+	}
+
+	return track, nil
+}
+
+// GetPlaylistTracks retrieves all tracks in a playlist
+func GetPlaylistTracks(playlistIdentifier string, usePlaylistID bool) ([]Track, error) {
+	if dbManager == nil {
+		return nil, errors.New("database not initialized")
+	}
+
+	dbTracks, err := dbManager.GetPlaylistTracks(playlistIdentifier, usePlaylistID)
+	if err != nil {
+		return nil, err
+	}
+
+	tracks := make([]Track, len(dbTracks))
+	for i, dbTrack := range dbTracks {
+		tracks[i] = Track{
+			ID:           dbTrack.PersistentID,
+			PersistentID: dbTrack.PersistentID,
+			Name:         dbTrack.Name,
+			Album:        dbTrack.Album,
+			Collection:   dbTrack.Collection,
+			Artist:       dbTrack.Artist,
+			Playlists:    dbTrack.Playlists,
+			Genre:        dbTrack.Genre,
+			Rating:       dbTrack.Rating,
+			Starred:      dbTrack.Starred,
+		}
+	}
+
+	return tracks, nil
+}
+
+// GetDatabaseStats returns database statistics
+func GetDatabaseStats() (*database.DatabaseStats, error) {
+	if dbManager == nil {
+		return nil, errors.New("database not initialized")
+	}
+	return dbManager.GetStats()
+}
+
+// SearchTracks is the main search function that uses database by default
+func SearchTracks(query string) ([]Track, error) {
+	if UseDatabase && dbManager != nil {
+		return SearchTracksFromDatabase(query, nil)
+	}
+	// Fallback to cache-based search (will be deprecated)
+	return SearchTracksFromCache(query)
 }
