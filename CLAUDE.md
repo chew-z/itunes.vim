@@ -57,17 +57,16 @@ This is a Go-based iTunes/Apple Music integration tool that bridges between comm
 - **CLI Application** (`itunes.go`): Command-line interface with search, play, and now-playing commands
 - **MCP Server** (`mcp-server/main.go`): Model Context Protocol server for LLM integration
 - **JXA Scripts** (`itunes/scripts/`): JavaScript automation scripts for Apple Music control (library refresh, playback, and status)
-- **Cache System** (`itunes/cache.go`): Dual-level (memory + file) caching system
-- **Database Layer** (`itunes/database/`): SQLite database with FTS5 for high-performance persistent storage and search (Phase 2)
+- **Database Layer** (`itunes/database/`): SQLite database with FTS5 for high-performance persistent storage and search
 
 ### Data Flow
 
-**Search Operations (Native Go, no scripts needed):**
-- **CLI**: Go CLI → Direct JSON cache read → Native Go search → Results
-- **MCP Server**: LLM client → MCP server → Direct JSON cache read → Native Go search → Results
+**Search Operations (Database-backed, no scripts needed):**
+- **CLI**: Go CLI → SQLite FTS5 database → Native Go search → Results
+- **MCP Server**: LLM client → MCP server → SQLite FTS5 database → Native Go search → Results
 
 **Library Refresh, Playback & Status (AppleScript/JXA bridge to Apple Music):**
-- **Library Refresh**: Go → JXA script → Apple Music app → JSON cache file
+- **Library Refresh**: Go → JXA script → Apple Music app → SQLite database population
 - **Playback**: Go → JXA script → Apple Music app → Playback control → Current track status
 - **Now Playing**: Go → JXA script → Apple Music app → Current playback status
 
@@ -76,6 +75,7 @@ This is a Go-based iTunes/Apple Music integration tool that bridges between comm
 - macOS with Apple Music app
 - Go 1.24.4+ (as specified in go.mod)
 - For MCP server: `github.com/mark3labs/mcp-go v0.34.0`
+- For database: `modernc.org/sqlite` (pure Go SQLite driver)
 - For Vim integration: Vim 8+, fzf
 
 ### Track Data Structure
@@ -130,15 +130,18 @@ The system now uses SQLite as the primary and only storage backend, with Apple M
 - **Database size**: ~760 bytes per track including indexes
 - **Dependencies**: Only `modernc.org/sqlite` (pure Go SQLite driver)
 
-## MCP Tools
+## MCP Tools (7 Available)
+
+The iTunes MCP server provides 7 tools for comprehensive iTunes/Apple Music integration:
 
 ### `search_itunes`
-- **Description**: Search iTunes/Apple Music library for tracks
-- **Parameters**: `query` (string, required) - Search query for tracks
+- **Description**: Search iTunes/Apple Music library for tracks using SQLite FTS5
+- **Parameters**: `query` (string, required) - Search query for tracks, artists, or albums
 - **Returns**: JSON array of matching tracks with metadata
+- **Performance**: <7ms average search time
 
 ### `play_track`
-- **Description**: Play a track with optional playlist context for continuous playback. Playlist context enables seamless continuation within the playlist. Album parameter helps locate tracks but does not provide playback context.
+- **Description**: Play a track with optional playlist context for continuous playback. **IMPORTANT**: Playlist context enables seamless continuation within the playlist. Album parameter helps locate tracks but does NOT provide album playback context.
 - **Parameters**:
   - `track_id` (string, optional): **RECOMMENDED** - Use the exact `id` field value from search results. Most reliable method that avoids encoding/character issues.
   - `playlist` (string, optional): **For continuous playback** - Use when playing from a user-created playlist. Use exact `collection` field value or a value from the `playlists` array. Enables playlist continuation.
@@ -155,7 +158,7 @@ The system now uses SQLite as the primary and only storage backend, with Apple M
 - **Description**: Refreshes the iTunes library database by extracting current data from Apple Music app and populating SQLite database. Takes 1-3 minutes for large libraries. Use only when library has changed significantly.
 - **Parameters**: None
 - **Returns**: Database population statistics and refresh status
-- **Process**: JXA script extraction → JSON cache creation → SQLite database population
+- **Process**: JXA script extraction → SQLite database population
 - **Warning**: Resource-intensive operation - only use with user approval
 
 ### `list_playlists`
@@ -216,18 +219,18 @@ The system now uses SQLite as the primary and only storage backend, with Apple M
 - For empty `collection` fields: ID-based lookup works universally
 - Track ID lookup is immune to encoding/character issues that affect name matching
 
-## Database System
+## Database System (SQLite Only)
 
-**SQLite with FTS5 (Primary Storage):**
+**SQLite with FTS5 (Single Storage Backend):**
 - **Database Location**: SQLite database (configurable via `ITUNES_DB_PATH`)
 - **Search Engine**: FTS5 full-text search with relevance ranking
 - **Persistent IDs**: Apple Music's stable identifiers for reliable track identification
-- **No Fallback**: Database is the only storage mode (no JSON cache)
+- **Database-First**: SQLite is the only storage backend (no cache files)
 
 **Operations:**
 - **Search operations**: FTS5 database search (<7ms) with advanced filtering
 - **Query caching**: Database-level caching (<5µs for repeated queries)
-- **Library refresh**: JXA script execution (~2-3 minutes) with direct database population
+- **Library refresh**: JXA script extraction with direct database population
 - **Database size**: ~760 bytes per track including indexes
 - **Search limit**: Configurable via `ITUNES_SEARCH_LIMIT` environment variable (default: 15)
 
@@ -261,42 +264,39 @@ The system now uses SQLite as the primary and only storage backend, with Apple M
 - `itunes/itunes.go` - Updated `PlayPlaylistTrack()` to accept trackID parameter, parse structured responses
 - `mcp-server/main.go` - Added `track_id` parameter to MCP tool, updated descriptions
 
-### 3. Phase 2 Step 2: Enhanced JXA for Persistent IDs (2025-01-22)
+### 2. Phase 2: Enhanced JXA for Persistent IDs (2025-01-22)
 **Major Enhancement**: Full persistent ID extraction for tracks and playlists with enhanced metadata.
 
-**Achievement**: Successfully enhanced the refresh system to extract Apple Music persistent IDs while maintaining backward compatibility.
+**Achievement**: Successfully enhanced the refresh system to extract Apple Music persistent IDs and populate SQLite database directly.
 
 **Key Improvements:**
 - **Track Enhancement**: Added persistent ID, genre, rating, and starred status to track data
 - **Playlist Extraction**: Complete playlist metadata with persistent IDs and special kinds
-- **Structured Response**: Separate arrays for tracks and playlists with statistics
-- **Multiple Cache Files**: `library.json` (backward compatible), `library_enhanced.json`, and `playlists.json`
-- **100% Success Rate**: All 9,393 tracks in test library have persistent IDs extracted
+- **Structured Database Schema**: Normalized tables for artists, genres, albums, tracks, and playlists
+- **100% Success Rate**: All 9,393 tracks in test library have persistent IDs extracted and migrated
 
 **Files Modified:**
 - `itunes/scripts/iTunes_Refresh_Library.js` - Enhanced to extract persistent IDs and playlist data
-- `itunes/itunes.go` - Added `PlaylistData`, `RefreshStats`, enhanced `Track` struct
-- `itunes/itunes_test.go` - Created comprehensive test suite with 8 test functions
-- Cache output now includes three files for different use cases
+- `itunes/itunes.go` - Added `PlaylistData`, `RefreshStats`, enhanced `Track` struct  
+- `database/` - Complete SQLite schema with FTS5 search and migration tools
 
-### 4. Native Go Search Implementation (2025-01-21)
-**Major Architecture Change**: Replaced JavaScript-based search with native Go implementation.
+### 3. Database-First Search Implementation (2025-07-22)  
+**Major Architecture Change**: Replaced JavaScript-based search with SQLite FTS5 database backend.
 
-**Problem**: `iTunes_Search2_fzf.js` script added unnecessary overhead - search didn't need Apple Music interaction, only JSON file reading.
+**Problem**: JavaScript search scripts added unnecessary overhead and JSON file dependencies.
 
-**Solution**: Implemented `SearchTracksFromCache()` function in Go with direct JSON cache reading.
+**Solution**: Implemented direct SQLite FTS5 search with advanced filtering capabilities.
 
 **Performance Impact:**
 - **Before**: Go → osascript → JavaScript → JSON parsing → search → JSON response → Go parsing (~50-100ms)
-- **After**: Go → direct JSON file read → native search logic → results (~1-5ms)
-- **Result**: ~20x faster search operations, eliminated process startup overhead
+- **After**: Go → SQLite FTS5 query → results (<7ms)
+- **Result**: ~15x faster search operations with advanced filtering support
 
 **Files Modified:**
-- `itunes/itunes.go` - Added `SearchTracksFromCache()` function, removed `SearchiTunesPlaylists()`
-- `itunes.go` (CLI) - Updated to use new Go search function
-- `mcp-server/main.go` - Updated search handler to use new Go function
-- `itunes/scripts.go` - Removed `searchScript` embed
-- **REMOVED**: `itunes/scripts/iTunes_Search2_fzf.js` and `autoload/iTunes_Search2_fzf.js`
+- `itunes/itunes.go` - Added `SearchTracks()` and `SearchTracksAdvanced()` functions with database backend
+- `database/search.go` - Complete FTS5 search implementation with caching
+- `mcp-server/main.go` - Updated all search handlers to use database backend
+- **REMOVED**: All cache-related files (`itunes/cache.go`) and JavaScript search scripts
 
 ### 5. Script Consolidation (2025-01-21)
 **Problem**: Duplicate JavaScript files in `autoload/` and `itunes/scripts/` directories.
@@ -310,32 +310,35 @@ The system now uses SQLite as the primary and only storage backend, with Apple M
 - Converted to symlinks: `iTunes_Play_Playlist_Track.js`, `iTunes_Refresh_Library.js`
 - Preserved unique files: `Play.js`, `Search.js`, `Search2.js` (legacy Vim integration)
 
-### 6. Empty Collection Field Support (2025-01-21)
-**Problem**: SomaFM tracks had empty `collection` fields, causing playlist lookup failures.
-**Solution**: Made playlist parameter optional with direct track playback fallback.
+### 4. System Reliability Improvements
+**Key enhancements for production stability:**
 
-### 7. Performance Optimization (2025-01-21)
-**Problem**: Direct track search was timing out due to inefficient playlist iteration.
-**Solution**: Optimized to search main library (`music.libraryPlaylists[0]`) instead of all playlists.
+- **Empty Collection Support**: Enhanced playback to handle tracks without collection metadata
+- **Universal Playability**: Optimized track lookup ensures all search results are playable  
+- **Script Consolidation**: Unified JXA scripts in `itunes/scripts/` with symlinks from `autoload/`
+- **Error Handling**: Comprehensive error messages for database and JXA operation failures
 
-**Result**: Universal playability - all tracks returned by `search_itunes` can now be played.
+**Result**: Reliable system with 100% track playability and graceful error handling.
 
 ## Development Notes
 
-### Current Architecture (Database-First)
+### Current Architecture (Phase 2 Complete - Database-First)
 - **Search operations**: SQLite FTS5 database queries (<7ms performance)
-- **Library refresh**: JXA script extraction to SQLite database population
+- **Library refresh**: JXA script extraction directly to SQLite database population
 - **Playback control**: AppleScript/JXA bridge to Apple Music app with persistent ID lookup
 - **No direct Apple Music API**: All interactions via JXA automation scripts
 - **Error handling**: Database errors and JXA exit codes (1 = no results, 2 = script error)
 - **Search results**: Configurable limit via `ITUNES_SEARCH_LIMIT` (default: 15)
-- **Storage**: SQLite only - no JSON cache fallback
+- **Storage**: SQLite only - cache system completely removed
 
 ### Key Functions
-- `SearchTracksFromDatabase(query string) ([]Track, error)` - SQLite FTS5 database search (<7ms)
-- `RefreshLibraryCache() error` - JXA script extraction with database population
-- `PlayPlaylistTrack(playlist, track, trackID string) error` - JXA script for ID-based playback control
+- `SearchTracks(query string) ([]Track, error)` - SQLite FTS5 database search (<7ms) 
+- `SearchTracksAdvanced(query string, filters *SearchFilters) ([]Track, error)` - Advanced search with filters
+- `RefreshLibraryCache() error` - JXA script extraction with direct database population
+- `PlayPlaylistTrackWithStatus(playlist, album, track, trackID string) (*PlayResult, error)` - Enhanced playback with status
 - `GetTrackByPersistentID(id string) (*Track, error)` - Direct database lookup by persistent ID
+- `ListPlaylists() ([]Playlist, error)` - List all playlists with metadata
+- `GetPlaylistTracks(playlist string, useID bool) ([]Track, error)` - Get tracks in specific playlist
 
 ### Script Usage (Post-Consolidation & ID Enhancement)
 - `itunes/scripts/iTunes_Refresh_Library.js` - Library data extraction via JXA using `track.persistentID()`
@@ -348,12 +351,19 @@ The system now uses SQLite as the primary and only storage backend, with Apple M
 **Major System Overhaul**: Complete transition from JSON cache to SQLite database backend.
 
 **Key Achievements:**
-- **Database-First Architecture**: SQLite is now the primary and only storage mechanism
+- **Database-First Architecture**: SQLite is now the only storage mechanism (cache system completely removed)
 - **FTS5 Search Performance**: <7ms search times achieved (target was <10ms)  
-- **Advanced MCP Tools**: Added `search_advanced`, `list_playlists`, `get_playlist_tracks`
+- **7 Advanced MCP Tools**: Complete toolset with `search_advanced`, `list_playlists`, `get_playlist_tracks`
 - **Persistent ID Integration**: Full Apple Music persistent ID support throughout system
 - **Migration Complete**: Successful migration of 9,000+ track libraries to SQLite
+- **Code Cleanup**: Removed `itunes/cache.go` and all cache-related dependencies (go-cache)
 - **Enhanced Reliability**: Eliminated JSON cache inconsistencies and performance issues
+
+**Commit References:**
+- [b605351](../../commit/b6053513678a7a3aa3d12ab72f1b31a764dcea4a) - Documentation corrections for album vs playlist playback context
+- [4be5a56](../../commit/4be5a567780b163b15581728e45ce73dfcfd8da2) - Final Phase 2 completion with dead code cleanup
+- [b9b52d0](../../commit/b9b52d03f21b7a618cfdc47230ef2f9a6493cf92) - MCP Server Database Integration with Advanced Tools
+- [59f587d](../../commit/59f587d2cd7978cbc01a61ca2b01e4aebbf6f2ea) - Database-backed search as default implementation
 
 #### ID-Based Playback Implementation (2025-01-21)
 **Major Reliability Improvement**: Replaced fragile name-based track matching with persistent ID lookup.
