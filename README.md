@@ -112,14 +112,45 @@ After building, binaries are available in the `bin/` directory:
 # - search_advanced
 ```
 
-### First-Time Setup
+### First-Time Setup & Database Refresh
 
 ```bash
-# Initialize and populate database (first run)
+# Initialize and populate database (first run or when library changes)
 ./bin/itunes-migrate -from-script
 
 # Or migrate from existing JSON cache
 ./bin/itunes-migrate -cache-dir ~/Music/iTunes/cache
+```
+
+#### When to Refresh Your Database
+
+Your iTunes/Apple Music database should be refreshed when:
+- **First installation** - Initial database population
+- **Library changes** - After adding/removing songs or playlists  
+- **Metadata updates** - After editing track information or ratings
+- **Search issues** - When search results seem outdated or incomplete
+
+#### Refresh Process (1-3 minutes)
+
+The refresh process completely rebuilds your music database:
+
+1. **Extracts all tracks and playlists** from Apple Music app using embedded JavaScript
+2. **Creates normalized SQLite database** with persistent Apple Music IDs
+3. **Builds FTS5 search index** for ultra-fast search performance (<7ms)
+4. **Validates data integrity** and reports statistics
+
+**Via MCP Server:**
+```bash
+# Use the refresh_library tool (requires user approval due to time cost)
+```
+
+**Via CLI:**
+```bash
+# Direct refresh with progress reporting
+./bin/itunes-migrate -from-script -verbose
+
+# Validate existing database
+./bin/itunes-migrate -validate
 ```
 
 ## Usage Examples

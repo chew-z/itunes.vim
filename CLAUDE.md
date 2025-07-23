@@ -236,6 +236,23 @@ The iTunes MCP server provides 7 tools for comprehensive iTunes/Apple Music inte
 - **Database size**: ~760 bytes per track including indexes
 - **Search limit**: Configurable via `ITUNES_SEARCH_LIMIT` environment variable (default: 15)
 
+### Database Refresh Process
+
+**User Action**: Use the `refresh_library` MCP tool or run `./bin/itunes-migrate -from-script`
+
+**Process Overview** (1-3 minutes for large libraries):
+1. **JXA Script Execution**: Embedded JavaScript extracts all tracks and playlists from Apple Music app with persistent IDs
+2. **JSON Cache Creation**: Script output stored in `$TMPDIR/itunes-cache/library.json`
+3. **Database Population**: JSON data migrated to SQLite in atomic transaction with normalized schema
+4. **FTS5 Index Rebuild**: Full-text search index updated for fast queries
+
+**Technical Details**:
+- **Complete Refresh**: Rebuilds entire database from current Apple Music state (not incremental)
+- **Atomic Operation**: All changes in single transaction with rollback on failure  
+- **Batch Processing**: Tracks processed in chunks of 100 for memory efficiency
+- **Persistent ID Integration**: Apple Music's stable identifiers ensure reliable track identification
+- **Streaming Track Support**: Detects and handles Internet audio streams with appropriate metadata
+
 **Environment Variables:**
 - `ITUNES_DB_PATH`: Override the primary database path (default: `~/Music/iTunes/itunes_library.db`)
 - `ITUNES_BACKUP_DB_PATH`: Override the backup database path (default: `~/Music/iTunes/itunes_library_backup.db`)

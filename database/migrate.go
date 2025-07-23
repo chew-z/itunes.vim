@@ -168,6 +168,11 @@ func (dm *DatabaseManager) populateFromRefreshResponse(response *RefreshResponse
 	}
 	defer tx.Rollback()
 
+	// Clear existing playlist associations to ensure accurate membership
+	if _, err := tx.Exec("DELETE FROM playlist_tracks"); err != nil {
+		return fmt.Errorf("failed to clear existing playlist associations: %w", err)
+	}
+
 	// First, insert all playlists
 	playlistIDMap := make(map[string]int64)    // persistentID -> database ID
 	playlistNameToID := make(map[string]int64) // name -> database ID

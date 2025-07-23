@@ -229,13 +229,42 @@ func RefreshLibraryCache() error {
 	}
 	tempFile.Close()
 
+	// Provide user feedback before starting the long-running script
+	fmt.Printf("🎵 Extracting music library from Apple Music app")
+	fmt.Printf("\n   This may take 1-3 minutes for large libraries")
+
 	cmd := exec.CommandContext(ctx, "osascript", "-l", "JavaScript", tempFile.Name())
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err = cmd.Run()
+	// Start the command
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("failed to start refresh script: %w", err)
+	}
+
+	// Show progress dots while script is running
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	// Progress indicator
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case err = <-done:
+			fmt.Printf(" ✅\n")
+			goto scriptComplete
+		case <-ticker.C:
+			fmt.Printf(".")
+		}
+	}
+
+scriptComplete:
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			if exitError.ExitCode() == 1 {
@@ -251,32 +280,58 @@ func RefreshLibraryCache() error {
 		return errors.New("refresh script returned no data")
 	}
 
-	// Parse the structured response
-	var response struct {
-		Status  string  `json:"status"`
-		Data    []Track `json:"data"`
-		Message string  `json:"message"`
-		Error   string  `json:"error"`
-	}
-
+	// Parse the structured response using correct database structure
+	var response database.RefreshResponse
 	if err := json.Unmarshal(responseJSON, &response); err != nil {
 		return fmt.Errorf("failed to parse refresh script response: %w", err)
 	}
 
 	if response.Status != "success" {
-		return fmt.Errorf("refresh script failed: %s", response.Message)
+		return fmt.Errorf("refresh script failed: %s", response.Error)
 	}
 
-	// Convert track data back to JSON for cache file
-	libraryJSON, err := json.Marshal(response.Data)
+	// Write enhanced cache file (full structure for migration tool)
+	enhancedJSON, err := json.Marshal(response)
 	if err != nil {
-		return fmt.Errorf("failed to marshal track data: %w", err)
+		return fmt.Errorf("failed to marshal enhanced response: %w", err)
 	}
 
-	// Write the library data to cache file
-	cacheFile := filepath.Join(cacheDir, "library.json")
-	if err := os.WriteFile(cacheFile, libraryJSON, 0644); err != nil {
-		return fmt.Errorf("failed to write cache file: %w", err)
+	enhancedFile := filepath.Join(cacheDir, "library_enhanced.json")
+	if err := os.WriteFile(enhancedFile, enhancedJSON, 0644); err != nil {
+		return fmt.Errorf("failed to write enhanced cache file: %w", err)
+	}
+
+	// Write legacy cache file (tracks only) for backward compatibility
+	if response.Data != nil && response.Data.Tracks != nil {
+		// Convert JSONTrack to Track for legacy format
+		legacyTracks := make([]Track, len(response.Data.Tracks))
+		for i, jsonTrack := range response.Data.Tracks {
+			legacyTracks[i] = Track{
+				ID:           jsonTrack.PersistentID,
+				PersistentID: jsonTrack.PersistentID,
+				Name:         jsonTrack.Name,
+				Album:        jsonTrack.Album,
+				Collection:   jsonTrack.Collection,
+				Artist:       jsonTrack.Artist,
+				Playlists:    jsonTrack.Playlists,
+				Genre:        jsonTrack.Genre,
+				Rating:       jsonTrack.Rating,
+				Starred:      jsonTrack.Starred,
+				IsStreaming:  jsonTrack.IsStreaming,
+				Kind:         jsonTrack.Kind,
+				StreamURL:    jsonTrack.StreamURL,
+			}
+		}
+
+		libraryJSON, err := json.Marshal(legacyTracks)
+		if err != nil {
+			return fmt.Errorf("failed to marshal legacy track data: %w", err)
+		}
+
+		cacheFile := filepath.Join(cacheDir, "library.json")
+		if err := os.WriteFile(cacheFile, libraryJSON, 0644); err != nil {
+			return fmt.Errorf("failed to write legacy cache file: %w", err)
+		}
 	}
 
 	return nil
