@@ -57,10 +57,9 @@ func TestRefreshResponseParsing(t *testing.T) {
 				}
 			],
 			"stats": {
-				"track_count": 2,
-				"playlist_count": 2,
-				"skipped_tracks": 0,
-				"refresh_time": "2025-01-22T10:00:00Z"
+				"total_tracks": 2,
+				"total_playlists": 2,
+				"processing_time_ms": 100
 			}
 		}
 	}`
@@ -119,11 +118,11 @@ func TestRefreshResponseParsing(t *testing.T) {
 	}
 
 	// Verify stats
-	if response.Data.Stats.TrackCount != 2 {
-		t.Errorf("Expected track count 2, got %d", response.Data.Stats.TrackCount)
+	if response.Data.Stats.TotalTracks != 2 {
+		t.Errorf("Expected track count 2, got %d", response.Data.Stats.TotalTracks)
 	}
-	if response.Data.Stats.PlaylistCount != 2 {
-		t.Errorf("Expected playlist count 2, got %d", response.Data.Stats.PlaylistCount)
+	if response.Data.Stats.TotalPlaylists != 2 {
+		t.Errorf("Expected playlist count 2, got %d", response.Data.Stats.TotalPlaylists)
 	}
 }
 
@@ -170,10 +169,9 @@ func TestErrorResponse(t *testing.T) {
 			"tracks": [],
 			"playlists": [],
 			"stats": {
-				"track_count": 0,
-				"playlist_count": 0,
-				"skipped_tracks": 0,
-				"refresh_time": "2025-01-22T10:00:00Z"
+				"total_tracks": 0,
+				"total_playlists": 0,
+				"processing_time_ms": 0
 			}
 		}
 	}`
@@ -203,10 +201,9 @@ func TestEmptyLibrary(t *testing.T) {
 			"tracks": [],
 			"playlists": [],
 			"stats": {
-				"track_count": 0,
-				"playlist_count": 0,
-				"skipped_tracks": 0,
-				"refresh_time": "2025-01-22T10:00:00Z"
+				"total_tracks": 0,
+				"total_playlists": 0,
+				"processing_time_ms": 0
 			}
 		}
 	}`
@@ -249,18 +246,13 @@ func TestLargeLibraryResponse(t *testing.T) {
 
 	response := RefreshResponse{
 		Status: "success",
-		Data: struct {
-			Tracks    []Track        `json:"tracks"`
-			Playlists []PlaylistData `json:"playlists"`
-			Stats     RefreshStats   `json:"stats"`
-		}{
+		Data: &RefreshData{
 			Tracks:    tracks,
 			Playlists: []PlaylistData{},
 			Stats: RefreshStats{
-				TrackCount:    1000,
-				PlaylistCount: 0,
-				SkippedTracks: 0,
-				RefreshTime:   time.Now().Format(time.RFC3339),
+				TotalTracks:    1000,
+				TotalPlaylists: 0,
+				ProcessingTime: 100,
 			},
 		},
 	}
