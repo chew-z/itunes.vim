@@ -111,7 +111,7 @@ The system now uses SQLite as the primary and only storage backend, with Apple M
 
 - **SQLite Database**: Primary storage with normalized schema (artists, albums, tracks, playlists)
 - **FTS5 Search**: Full-text search with <10ms query performance (achieved <7ms in testing)
-- **Persistent IDs**: Apple Music's stable identifiers for reliable track identification 
+- **Persistent IDs**: Apple Music's stable identifiers for reliable track identification
 - **Database-First**: SQLite is the default mode, no JSON fallback
 - **Enhanced JXA Scripts**: Extract persistent IDs for tracks and playlists
 
@@ -264,19 +264,16 @@ The system provides comprehensive support for streaming tracks (Internet audio s
 **For streaming tracks, `now_playing` returns:**
 ```json
 {
-  "status": "playing",
-  "track": {
+  "status": "streaming",
+  "stream": {
     "id": "CD48A79AC1F96E4C",
     "name": "SomaFM: The In-Sound (Special)",
-    "artist": "",
-    "album": "",
-    "position": "2:07",
-    "position_seconds": 127,
-    "is_streaming": true,
+    "stream_url": "http://ice6.somafm.com/insound-128-aac",
     "kind": "Internet audio stream",
-    "stream_url": "http://ice6.somafm.com/insound-128-aac"
+    "elapsed": "2:07",
+    "elapsed_seconds": 127
   },
-  "display": "SomaFM: The In-Sound (Special) [STREAMING]"
+  "display": "SomaFM: The In-Sound (Special)"
 }
 ```
 
@@ -300,8 +297,10 @@ The system provides comprehensive support for streaming tracks (Internet audio s
 
 ### Key Differences
 
+- **Status field**: Streaming tracks use `"streaming"` or `"streaming_paused"` instead of `"playing"`/`"paused"`
+- **Response structure**: Streaming tracks have a `stream` object instead of `track` object
+- **Time fields**: Streaming tracks use `elapsed`/`elapsed_seconds` instead of `position`/`duration` fields
 - **Position tracking**: Streaming tracks show elapsed time since stream started, but no total duration
-- **Display format**: Streaming tracks include `[STREAMING]` indicator
 - **Search results**: Include `is_streaming`, `kind`, and `stream_url` fields for streaming tracks
 - **Filtering**: Use `streaming_only` or `local_only` parameters in `search_advanced` tool
 
@@ -352,10 +351,10 @@ All playback operations work identically for streaming and local tracks using pe
 
 **Files Modified:**
 - `itunes/scripts/iTunes_Refresh_Library.js` - Enhanced to extract persistent IDs and playlist data
-- `itunes/itunes.go` - Added `PlaylistData`, `RefreshStats`, enhanced `Track` struct  
+- `itunes/itunes.go` - Added `PlaylistData`, `RefreshStats`, enhanced `Track` struct
 - `database/` - Complete SQLite schema with FTS5 search and migration tools
 
-### 3. Database-First Search Implementation (2025-07-22)  
+### 3. Database-First Search Implementation (2025-07-22)
 **Major Architecture Change**: Replaced JavaScript-based search with SQLite FTS5 database backend.
 
 **Problem**: JavaScript search scripts added unnecessary overhead and JSON file dependencies.
@@ -389,23 +388,26 @@ All playback operations work identically for streaming and local tracks using pe
 **Key enhancements for production stability:**
 
 - **Empty Collection Support**: Enhanced playback to handle tracks without collection metadata
-- **Universal Playability**: Optimized track lookup ensures all search results are playable  
+- **Universal Playability**: Optimized track lookup ensures all search results are playable
 - **Script Consolidation**: Unified JXA scripts in `itunes/scripts/` with symlinks from `autoload/`
 - **Error Handling**: Comprehensive error messages for database and JXA operation failures
 
 **Result**: Reliable system with 100% track playability and graceful error handling.
 
-### 6. Streaming Track Support Implementation (2025-07-23)
+### 6. Streaming Track Support Implementation (2025-01-23)
 **Major Feature Addition**: Comprehensive support for streaming tracks (Internet audio streams) with differentiated behavior.
 
 **Problem**: Streaming tracks (like SomaFM radio stations) were not properly identified and behaved identically to local tracks, confusing users with meaningless duration/position information.
 
-**Solution**: Implemented streaming track detection and appropriate response structures.
+**Solution**: Implemented streaming track detection with completely separate response structures.
 
 **Key Features:**
 - **Streaming Detection**: Identifies tracks by `kind: "Internet audio stream"`
-- **Different Response Structures**: Streaming tracks return position but no duration (continuous streams)
-- **Visual Indicators**: `[STREAMING]` display indicator for streaming tracks
+- **Separate Response Structures**:
+  - Streaming tracks: `status: "streaming"`, `stream` object with `elapsed`/`elapsed_seconds`
+  - Local tracks: `status: "playing"`, `track` object with `position`/`duration`
+- **Different Status Values**: `"streaming"` and `"streaming_paused"` for streaming tracks
+- **Clean Messages**: "Started streaming: SomaFM: Lush" instead of appending "[STREAMING]"
 - **Advanced Filtering**: `streaming_only` and `local_only` parameters in `search_advanced` tool
 - **Stream URL Extraction**: Captures actual stream URLs for streaming tracks
 
@@ -438,7 +440,7 @@ All playback operations work identically for streaming and local tracks using pe
 - **Storage**: SQLite only - cache system completely removed
 
 ### Key Functions
-- `SearchTracks(query string) ([]Track, error)` - SQLite FTS5 database search (<7ms) 
+- `SearchTracks(query string) ([]Track, error)` - SQLite FTS5 database search (<7ms)
 - `SearchTracksAdvanced(query string, filters *SearchFilters) ([]Track, error)` - Advanced search with filters
 - `RefreshLibraryCache() error` - JXA script extraction with direct database population
 - `PlayPlaylistTrackWithStatus(playlist, album, track, trackID string) (*PlayResult, error)` - Enhanced playback with status
@@ -458,7 +460,7 @@ All playback operations work identically for streaming and local tracks using pe
 
 **Key Achievements:**
 - **Database-First Architecture**: SQLite is now the only storage mechanism (cache system completely removed)
-- **FTS5 Search Performance**: <7ms search times achieved (target was <10ms)  
+- **FTS5 Search Performance**: <7ms search times achieved (target was <10ms)
 - **7 Advanced MCP Tools**: Complete toolset with `search_advanced`, `list_playlists`, `get_playlist_tracks`
 - **Persistent ID Integration**: Full Apple Music persistent ID support throughout system
 - **Migration Complete**: Successful migration of 9,000+ track libraries to SQLite

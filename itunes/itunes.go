@@ -82,13 +82,35 @@ type NowPlayingTrack struct {
 	Duration        string `json:"duration"`
 	PositionSeconds int    `json:"position_seconds"`
 	DurationSeconds int    `json:"duration_seconds"`
+	IsStreaming     bool   `json:"is_streaming"`
+	Kind            string `json:"kind,omitempty"`
+	StreamURL       string `json:"stream_url,omitempty"`
+}
+
+// jsNowPlayingResponse represents the raw response from JavaScript
+type jsNowPlayingResponse struct {
+	Status  string           `json:"status"`
+	Track   *NowPlayingTrack `json:"track,omitempty"`
+	Display string           `json:"display"`
+	Message string           `json:"message"`
+}
+
+// StreamingTrack contains streaming track information
+type StreamingTrack struct {
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	StreamURL      string `json:"stream_url"`
+	Kind           string `json:"kind"`
+	Elapsed        string `json:"elapsed"`
+	ElapsedSeconds int    `json:"elapsed_seconds"`
 }
 
 // NowPlayingStatus represents the current playback status
 type NowPlayingStatus struct {
-	Status  string           `json:"status"` // "playing", "paused", "stopped", "error"
-	Track   *NowPlayingTrack `json:"track,omitempty"`
-	Display string           `json:"display"` // Formatted display string
+	Status  string           `json:"status"`           // "playing", "paused", "stopped", "error", "streaming", "streaming_paused"
+	Track   *NowPlayingTrack `json:"track,omitempty"`  // For local tracks
+	Stream  *StreamingTrack  `json:"stream,omitempty"` // For streaming tracks
+	Display string           `json:"display"`          // Formatted display string
 	Message string           `json:"message"`
 }
 
@@ -294,12 +316,48 @@ func GetNowPlaying() (*NowPlayingStatus, error) {
 		return nil, errors.New("now playing script returned no data")
 	}
 
-	var status NowPlayingStatus
-	if err := json.Unmarshal(responseJSON, &status); err != nil {
+	// First parse the raw JavaScript response
+	var jsResponse jsNowPlayingResponse
+	if err := json.Unmarshal(responseJSON, &jsResponse); err != nil {
 		return nil, fmt.Errorf("failed to parse now playing script response: %w", err)
 	}
 
-	return &status, nil
+	// Convert to appropriate response structure
+	status := &NowPlayingStatus{
+		Display: jsResponse.Display,
+		Message: jsResponse.Message,
+	}
+
+	// Handle different states based on track type
+	if jsResponse.Track != nil && jsResponse.Track.IsStreaming {
+		// Streaming track
+		if jsResponse.Status == "playing" {
+			status.Status = "streaming"
+		} else if jsResponse.Status == "paused" {
+			status.Status = "streaming_paused"
+		} else {
+			status.Status = jsResponse.Status
+		}
+
+		// Convert to StreamingTrack
+		status.Stream = &StreamingTrack{
+			ID:             jsResponse.Track.ID,
+			Name:           jsResponse.Track.Name,
+			StreamURL:      jsResponse.Track.StreamURL,
+			Kind:           jsResponse.Track.Kind,
+			Elapsed:        jsResponse.Track.Position,
+			ElapsedSeconds: jsResponse.Track.PositionSeconds,
+		}
+	} else if jsResponse.Track != nil {
+		// Local track
+		status.Status = jsResponse.Status
+		status.Track = jsResponse.Track
+	} else {
+		// No track (stopped, error, etc.)
+		status.Status = jsResponse.Status
+	}
+
+	return status, nil
 }
 
 // PlayPlaylistTrackWithStatus runs PlayPlaylistTrack and returns the result with current track info
@@ -330,8 +388,14 @@ func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID str
 	result.NowPlaying = nowPlaying
 
 	// Create a success message based on what's playing
-	if nowPlaying.Status == "playing" && nowPlaying.Track != nil {
-		result.Message = fmt.Sprintf("Now playing: %s", nowPlaying.Display)
+	if nowPlaying.Status == "streaming" && nowPlaying.Stream != nil {
+		result.Message = fmt.Sprintf("Started streaming: %s", nowPlaying.Stream.Name)
+	} else if nowPlaying.Status == "playing" && nowPlaying.Track != nil {
+		if nowPlaying.Track.Artist != "" && nowPlaying.Track.Artist != "Unknown Artist" {
+			result.Message = fmt.Sprintf("Now playing: %s by %s", nowPlaying.Track.Name, nowPlaying.Track.Artist)
+		} else {
+			result.Message = fmt.Sprintf("Now playing: %s", nowPlaying.Track.Name)
+		}
 	} else {
 		result.Message = "Playback command sent successfully"
 	}
