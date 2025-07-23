@@ -14,7 +14,7 @@ A comprehensive Go-based tool that bridges command-line interfaces and AI applic
 ### Key Features
 
 - **Ultra-Fast Search**: SQLite FTS5 database with <7ms query performance  
-- **Smart Playbook**: ID-based track lookup with playlist context support
+- **Smart Playback**: ID-based track lookup with playlist context support
 - **MCP Integration**: 7 specialized tools for AI/LLM applications
 - **Database-First**: Normalized SQLite schema with persistent Apple Music IDs
 - **Real-Time Sync**: JXA automation bridge for live Apple Music control
@@ -136,7 +136,7 @@ ITUNES_DB_PATH=/custom/path/library.db ./bin/itunes search "classical"
 ### Playback Control
 
 ```bash
-# ID-based playbook (most reliable)
+# ID-based playback (most reliable)
 ./bin/itunes play "" "" "" "B258396D58E2ECC9"
 
 # Playlist context (enables continuous playback)
@@ -221,7 +221,7 @@ Advanced search with filters for genre, artist, rating, etc.
 
 ### Search Performance
 - **Average query time**: <7ms (target <10ms achieved)
-- **Cached searches**: <5�s for repeated queries
+- **Cached searches**: <5µs for repeated queries
 - **Database size**: ~760 bytes per track including indexes
 - **Insert performance**: ~800 tracks/second during migration
 
@@ -236,7 +236,7 @@ Search Operations (9,000+ track library):
 - Simple queries:    3-5ms
 - Complex queries:   5-7ms
 - FTS5 phrase search: 6-8ms
-- Cache hits:        <5�s
+- Cache hits:        <5µs
 ```
 
 ## Environment Variables
@@ -283,17 +283,17 @@ go test ./database -bench=BenchmarkSearch
 ### Code Structure
 
 ```
-   itunes.go              # Main CLI application
-   mcp-server/            # MCP server implementation
-   itunes/                # Core iTunes integration library
-      itunes.go         # Main iTunes functions
-      scripts/          # JXA automation scripts
-   database/              # SQLite database layer
-      database.go       # Core database operations
-      search.go         # FTS5 search implementation
-      migrate.go        # Migration utilities
-      schema.go         # Database schema
-   cmd/migrate/           # Migration tool
+├── itunes.go              # Main CLI application
+├── mcp-server/            # MCP server implementation
+├── itunes/                # Core iTunes integration library
+│   ├── itunes.go         # Main iTunes functions
+│   └── scripts/          # JXA automation scripts
+├── database/              # SQLite database layer
+│   ├── database.go       # Core database operations
+│   ├── search.go         # FTS5 search implementation
+│   ├── migrate.go        # Migration utilities
+│   └── schema.go         # Database schema
+└── cmd/migrate/           # Migration tool
 ```
 
 ## Troubleshooting
@@ -333,7 +333,7 @@ rm ~/Music/iTunes/itunes_library.db
 ### AppleScript Permissions
 
 Grant Terminal/iTerm access to:
-- **System Preferences � Security & Privacy � Privacy � Automation**
+- **System Preferences → Security & Privacy → Privacy → Automation**
 - Enable access to "Music" for your terminal application
 
 ### Performance Issues
