@@ -709,7 +709,7 @@ func (dm *DatabaseManager) GetPlaylistByPersistentID(persistentID string) (*Play
 func (dm *DatabaseManager) ListPlaylists() ([]Playlist, error) {
 	rows, err := dm.DB.Query(`
 		SELECT p.id, p.persistent_id, p.name, COALESCE(g.name, ''), p.special_kind,
-			(SELECT COUNT(*) FROM playlist_tracks pt WHERE pt.playlist_id = p.id) as track_count
+			p.track_count
 		FROM playlists p
 		LEFT JOIN genres g ON g.id = p.genre_id
 		WHERE p.special_kind = 'none' OR p.special_kind IS NULL

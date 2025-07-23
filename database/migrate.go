@@ -508,7 +508,7 @@ func (dm *DatabaseManager) insertPlaylistTracksTx(tx *sql.Tx, trackID int64, pla
 
 		// Insert playlist track association
 		_, err = tx.Exec(`
-			INSERT OR REPLACE INTO playlist_tracks (playlist_id, track_id, position)
+			INSERT OR IGNORE INTO playlist_tracks (playlist_id, track_id, position)
 			VALUES (?, ?, ?)
 		`, playlistID, trackID, nextPosition)
 		if err != nil {
