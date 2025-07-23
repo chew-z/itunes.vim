@@ -31,10 +31,13 @@ type Track struct {
 	Album        string   `json:"album"`
 	Collection   string   `json:"collection"` // Primary playlist name or album if not in a playlist
 	Artist       string   `json:"artist"`
-	Playlists    []string `json:"playlists"`         // All playlists containing this track
-	Genre        string   `json:"genre,omitempty"`   // Phase 2: Track genre
-	Rating       int      `json:"rating,omitempty"`  // Phase 2: Track rating (0-100)
-	Starred      bool     `json:"starred,omitempty"` // Phase 2: Loved/starred status
+	Playlists    []string `json:"playlists"`            // All playlists containing this track
+	Genre        string   `json:"genre,omitempty"`      // Phase 2: Track genre
+	Rating       int      `json:"rating,omitempty"`     // Phase 2: Track rating (0-100)
+	Starred      bool     `json:"starred,omitempty"`    // Phase 2: Loved/starred status
+	IsStreaming  bool     `json:"is_streaming"`         // Streaming track detection
+	Kind         string   `json:"kind,omitempty"`       // Track type (e.g., "Internet audio stream")
+	StreamURL    string   `json:"stream_url,omitempty"` // Stream URL for streaming tracks
 }
 
 // PlaylistData represents playlist metadata with persistent ID (Phase 2)
@@ -411,6 +414,9 @@ func SearchTracksFromDatabase(query string, filters *database.SearchFilters) ([]
 			Genre:        dbTrack.Genre,
 			Rating:       dbTrack.Rating,
 			Starred:      dbTrack.Starred,
+			IsStreaming:  dbTrack.IsStreaming,
+			Kind:         dbTrack.Kind,
+			StreamURL:    dbTrack.StreamURL,
 		}
 	}
 
@@ -439,6 +445,9 @@ func GetTrackByPersistentID(persistentID string) (*Track, error) {
 		Genre:        dbTrack.Genre,
 		Rating:       dbTrack.Rating,
 		Starred:      dbTrack.Starred,
+		IsStreaming:  dbTrack.IsStreaming,
+		Kind:         dbTrack.Kind,
+		StreamURL:    dbTrack.StreamURL,
 	}
 
 	return track, nil
@@ -468,6 +477,9 @@ func GetPlaylistTracks(playlistIdentifier string, usePlaylistID bool) ([]Track, 
 			Genre:        dbTrack.Genre,
 			Rating:       dbTrack.Rating,
 			Starred:      dbTrack.Starred,
+			IsStreaming:  dbTrack.IsStreaming,
+			Kind:         dbTrack.Kind,
+			StreamURL:    dbTrack.StreamURL,
 		}
 	}
 

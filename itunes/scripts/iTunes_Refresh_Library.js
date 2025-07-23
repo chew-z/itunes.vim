@@ -119,6 +119,26 @@ function run(argv) {
                 let trackPersistentID = track.persistentID()
                 let trackPlaylists = playlistMap.get(trackPersistentID) || []
 
+                // Extract streaming detection properties
+                let trackKind = ''
+                let isStreaming = false
+                let streamURL = ''
+
+                try {
+                    if (track.kind.exists()) {
+                        trackKind = track.kind()
+                        isStreaming = trackKind === "Internet audio stream"
+                    }
+                } catch (e) {}
+
+                if (isStreaming) {
+                    try {
+                        if (track.address.exists()) {
+                            streamURL = track.address()
+                        }
+                    } catch (e) {}
+                }
+
                 // Build enhanced track object
                 let trackData = {
                     id: trackPersistentID,
@@ -131,6 +151,9 @@ function run(argv) {
                     genre: '',
                     rating: 0,
                     starred: false,
+                    is_streaming: isStreaming,
+                    kind: trackKind,
+                    stream_url: streamURL,
                 }
 
                 // Extract additional metadata

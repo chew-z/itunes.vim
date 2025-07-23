@@ -7,7 +7,7 @@ import (
 )
 
 // SchemaVersion represents the current database schema version
-const SchemaVersion = 1
+const SchemaVersion = 2
 
 // Migration represents a database migration
 type Migration struct {
@@ -203,6 +203,77 @@ var Schema = []Migration{
 		DROP TABLE IF EXISTS genres;
 		DROP TABLE IF EXISTS artists;
 		DROP TABLE IF EXISTS schema_migrations;
+		`,
+	},
+	{
+		Version:     2,
+		Description: "Add streaming track support with detection fields",
+		Up: `
+		-- Add streaming detection columns to tracks table
+		ALTER TABLE tracks ADD COLUMN is_streaming BOOLEAN DEFAULT FALSE;
+		ALTER TABLE tracks ADD COLUMN track_kind VARCHAR(100);
+		ALTER TABLE tracks ADD COLUMN stream_url VARCHAR(500);
+
+		-- Create indexes for streaming queries
+		CREATE INDEX IF NOT EXISTS idx_tracks_streaming ON tracks(is_streaming);
+		CREATE INDEX IF NOT EXISTS idx_tracks_kind ON tracks(track_kind);
+
+		-- Update schema version
+		INSERT INTO schema_migrations (version, description) VALUES (2, 'Add streaming track support with detection fields');
+		`,
+		Down: `
+		-- Remove streaming columns and indexes
+		DROP INDEX IF EXISTS idx_tracks_kind;
+		DROP INDEX IF EXISTS idx_tracks_streaming;
+		
+		-- Note: SQLite doesn't support DROP COLUMN, so we'd need to recreate the table
+		-- This is a simplified down migration that warns about data loss
+		CREATE TABLE tracks_backup AS SELECT 
+			id, persistent_id, name, artist_id, album_id, genre_id, collection,
+			rating, starred, ranking, duration, play_count, last_played, 
+			date_added, created_at, updated_at
+		FROM tracks;
+		
+		DROP TABLE tracks;
+		
+		CREATE TABLE tracks (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			persistent_id TEXT NOT NULL UNIQUE,
+			name TEXT NOT NULL,
+			artist_id INTEGER,
+			album_id INTEGER,
+			genre_id INTEGER,
+			collection TEXT,
+			rating INTEGER DEFAULT 0 CHECK (rating >= 0 AND rating <= 100),
+			starred BOOLEAN DEFAULT 0,
+			ranking REAL DEFAULT 0.0,
+			duration INTEGER DEFAULT 0,
+			play_count INTEGER DEFAULT 0,
+			last_played DATETIME,
+			date_added DATETIME,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (artist_id) REFERENCES artists(id),
+			FOREIGN KEY (album_id) REFERENCES albums(id),
+			FOREIGN KEY (genre_id) REFERENCES genres(id)
+		);
+		
+		INSERT INTO tracks SELECT * FROM tracks_backup;
+		DROP TABLE tracks_backup;
+		
+		-- Recreate original indexes
+		CREATE INDEX IF NOT EXISTS idx_tracks_persistent_id ON tracks(persistent_id);
+		CREATE INDEX IF NOT EXISTS idx_tracks_artist_id ON tracks(artist_id);
+		CREATE INDEX IF NOT EXISTS idx_tracks_album_id ON tracks(album_id);
+		CREATE INDEX IF NOT EXISTS idx_tracks_genre_id ON tracks(genre_id);
+		CREATE INDEX IF NOT EXISTS idx_tracks_collection ON tracks(collection);
+		CREATE INDEX IF NOT EXISTS idx_tracks_starred ON tracks(starred);
+		CREATE INDEX IF NOT EXISTS idx_tracks_rating ON tracks(rating);
+		CREATE INDEX IF NOT EXISTS idx_tracks_ranking ON tracks(ranking DESC);
+		CREATE INDEX IF NOT EXISTS idx_tracks_date_added ON tracks(date_added);
+		
+		-- Remove migration record
+		DELETE FROM schema_migrations WHERE version = 2;
 		`,
 	},
 }

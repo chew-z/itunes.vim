@@ -114,6 +114,12 @@ func main() {
 		mcp.WithNumber("limit",
 			mcp.Description("Maximum number of results to return. Default is 15."),
 		),
+		mcp.WithBoolean("streaming_only",
+			mcp.Description("If true, only return streaming tracks (e.g., radio stations). If false, return all tracks."),
+		),
+		mcp.WithBoolean("local_only",
+			mcp.Description("If true, only return local (non-streaming) tracks. If false, return all tracks."),
+		),
 	)
 
 	// Add tools to server
@@ -369,6 +375,18 @@ func searchAdvancedHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 	if _, hasStarred := args["starred"]; hasStarred {
 		starred := request.GetBool("starred", false)
 		filters.Starred = &starred
+	}
+
+	// Check if streaming_only parameter was provided
+	if _, hasStreamingOnly := args["streaming_only"]; hasStreamingOnly {
+		streamingOnly := request.GetBool("streaming_only", false)
+		filters.StreamingOnly = &streamingOnly
+	}
+
+	// Check if local_only parameter was provided
+	if _, hasLocalOnly := args["local_only"]; hasLocalOnly {
+		localOnly := request.GetBool("local_only", false)
+		filters.LocalOnly = &localOnly
 	}
 
 	if limit := request.GetFloat("limit", 0); limit > 0 {

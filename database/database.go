@@ -48,6 +48,9 @@ type Track struct {
 	PlayCount    int
 	LastPlayed   *time.Time
 	DateAdded    *time.Time
+	IsStreaming  bool   `json:"is_streaming"`
+	Kind         string `json:"kind,omitempty"`
+	StreamURL    string `json:"stream_url,omitempty"`
 }
 
 // Playlist represents a playlist with Apple Music persistent ID
@@ -70,6 +73,8 @@ type SearchFilters struct {
 	MinRating     int
 	Limit         int
 	UsePlaylistID bool
+	StreamingOnly *bool
+	LocalOnly     *bool
 }
 
 // DatabaseStats contains database statistics
@@ -225,14 +230,16 @@ func (dm *DatabaseManager) InsertTrack(track *Track) error {
 		INSERT INTO tracks (
 			persistent_id, name, artist_id, album_id, genre_id,
 			collection, rating, starred, ranking, duration,
-			play_count, last_played, date_added
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			play_count, last_played, date_added, is_streaming,
+			track_kind, stream_url
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
 	result, err := dm.DB.Exec(query,
 		track.PersistentID, track.Name, artistID, albumID, genreID,
 		track.Collection, track.Rating, track.Starred, track.Ranking, track.Duration,
-		track.PlayCount, track.LastPlayed, track.DateAdded,
+		track.PlayCount, track.LastPlayed, track.DateAdded, track.IsStreaming,
+		track.Kind, track.StreamURL,
 	)
 	if err != nil {
 		return fmt.Errorf("failed to insert track: %w", err)
@@ -252,7 +259,8 @@ func (dm *DatabaseManager) GetTrackByPersistentID(persistentID string) (*Track, 
 		SELECT
 			t.id, t.persistent_id, t.name, al.name, t.collection,
 			ar.name, g.name, t.rating, t.starred, t.ranking,
-			t.duration, t.play_count, t.last_played, t.date_added
+			t.duration, t.play_count, t.last_played, t.date_added,
+			t.is_streaming, t.track_kind, t.stream_url
 		FROM tracks t
 		LEFT JOIN artists ar ON ar.id = t.artist_id
 		LEFT JOIN albums al ON al.id = t.album_id
@@ -265,6 +273,7 @@ func (dm *DatabaseManager) GetTrackByPersistentID(persistentID string) (*Track, 
 		&track.ID, &track.PersistentID, &track.Name, &track.Album, &track.Collection,
 		&track.Artist, &track.Genre, &track.Rating, &track.Starred, &track.Ranking,
 		&track.Duration, &track.PlayCount, &track.LastPlayed, &track.DateAdded,
+		&track.IsStreaming, &track.Kind, &track.StreamURL,
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -342,6 +351,14 @@ func (dm *DatabaseManager) SearchTracks(query string, filters *SearchFilters) ([
 		args = append(args, filters.MinRating)
 	}
 
+	if filters.StreamingOnly != nil && *filters.StreamingOnly {
+		conditions = append(conditions, "t.is_streaming = 1")
+	}
+
+	if filters.LocalOnly != nil && *filters.LocalOnly {
+		conditions = append(conditions, "t.is_streaming = 0")
+	}
+
 	whereClause := ""
 	if len(conditions) > 0 {
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
@@ -351,7 +368,8 @@ func (dm *DatabaseManager) SearchTracks(query string, filters *SearchFilters) ([
 		SELECT
 			t.id, t.persistent_id, t.name, al.name, t.collection,
 			ar.name, g.name, t.rating, t.starred, t.ranking,
-			t.duration, t.play_count, t.last_played, t.date_added
+			t.duration, t.play_count, t.last_played, t.date_added,
+			t.is_streaming, t.track_kind, t.stream_url
 		FROM tracks t
 		LEFT JOIN artists ar ON ar.id = t.artist_id
 		LEFT JOIN albums al ON al.id = t.album_id
@@ -376,6 +394,7 @@ func (dm *DatabaseManager) SearchTracks(query string, filters *SearchFilters) ([
 			&track.ID, &track.PersistentID, &track.Name, &track.Album, &track.Collection,
 			&track.Artist, &track.Genre, &track.Rating, &track.Starred, &track.Ranking,
 			&track.Duration, &track.PlayCount, &track.LastPlayed, &track.DateAdded,
+			&track.IsStreaming, &track.Kind, &track.StreamURL,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan track: %w", err)
@@ -429,6 +448,14 @@ func (dm *DatabaseManager) SearchTracksWithFTS(query string, filters *SearchFilt
 		args = append(args, filters.MinRating)
 	}
 
+	if filters.StreamingOnly != nil && *filters.StreamingOnly {
+		conditions = append(conditions, "t.is_streaming = 1")
+	}
+
+	if filters.LocalOnly != nil && *filters.LocalOnly {
+		conditions = append(conditions, "t.is_streaming = 0")
+	}
+
 	whereClause := ""
 	if len(conditions) > 0 {
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
@@ -438,7 +465,8 @@ func (dm *DatabaseManager) SearchTracksWithFTS(query string, filters *SearchFilt
 		SELECT
 			t.id, t.persistent_id, t.name, al.name, t.collection,
 			ar.name, g.name, t.rating, t.starred, t.ranking,
-			t.duration, t.play_count, t.last_played, t.date_added
+			t.duration, t.play_count, t.last_played, t.date_added,
+			t.is_streaming, t.track_kind, t.stream_url
 		FROM tracks t
 		LEFT JOIN artists ar ON ar.id = t.artist_id
 		LEFT JOIN albums al ON al.id = t.album_id
@@ -463,6 +491,7 @@ func (dm *DatabaseManager) SearchTracksWithFTS(query string, filters *SearchFilt
 			&track.ID, &track.PersistentID, &track.Name, &track.Album, &track.Collection,
 			&track.Artist, &track.Genre, &track.Rating, &track.Starred, &track.Ranking,
 			&track.Duration, &track.PlayCount, &track.LastPlayed, &track.DateAdded,
+			&track.IsStreaming, &track.Kind, &track.StreamURL,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan track: %w", err)
@@ -529,13 +558,14 @@ func (dm *DatabaseManager) BatchInsertTracks(tracks []Track) error {
 		INSERT OR REPLACE INTO tracks (
 			persistent_id, name, artist_id, album_id, genre_id,
 			collection, rating, starred, ranking, duration,
-			play_count, last_played, date_added, created_at, updated_at
+			play_count, last_played, date_added, is_streaming,
+			track_kind, stream_url, created_at, updated_at
 		) VALUES (
 			?, ?,
 			(SELECT id FROM artists WHERE name = ?),
 			(SELECT id FROM albums WHERE name = ? AND artist_id = (SELECT id FROM artists WHERE name = ?)),
 			(SELECT id FROM genres WHERE name = ?),
-			?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+			?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
 		)
 	`)
 	if err != nil {
@@ -571,7 +601,8 @@ func (dm *DatabaseManager) BatchInsertTracks(tracks []Track) error {
 			track.Album, track.Artist, genre,
 			track.Collection, track.Rating, track.Starred,
 			track.Ranking, track.Duration, track.PlayCount,
-			track.LastPlayed, track.DateAdded,
+			track.LastPlayed, track.DateAdded, track.IsStreaming,
+			track.Kind, track.StreamURL,
 		)
 		if err != nil {
 			return fmt.Errorf("failed to insert track '%s': %w", track.Name, err)
@@ -746,7 +777,8 @@ func (dm *DatabaseManager) GetPlaylistTracks(playlistPersistentID string, usePla
 		SELECT
 			t.id, t.persistent_id, t.name, al.name, t.collection,
 			ar.name, g.name, t.rating, t.starred, t.ranking,
-			t.duration, t.play_count, t.last_played, t.date_added
+			t.duration, t.play_count, t.last_played, t.date_added,
+			t.is_streaming, t.track_kind, t.stream_url
 		FROM tracks t
 		JOIN playlist_tracks pt ON pt.track_id = t.id
 		JOIN playlists p ON p.id = pt.playlist_id
@@ -770,6 +802,7 @@ func (dm *DatabaseManager) GetPlaylistTracks(playlistPersistentID string, usePla
 			&track.ID, &track.PersistentID, &track.Name, &track.Album, &track.Collection,
 			&track.Artist, &track.Genre, &track.Rating, &track.Starred, &track.Ranking,
 			&track.Duration, &track.PlayCount, &track.LastPlayed, &track.DateAdded,
+			&track.IsStreaming, &track.Kind, &track.StreamURL,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan track: %w", err)

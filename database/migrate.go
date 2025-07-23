@@ -56,6 +56,9 @@ type JSONTrack struct {
 	Genre        string   `json:"genre,omitempty"`
 	Rating       int      `json:"rating,omitempty"`
 	Starred      bool     `json:"starred,omitempty"`
+	IsStreaming  bool     `json:"is_streaming"`
+	Kind         string   `json:"kind,omitempty"`
+	StreamURL    string   `json:"stream_url,omitempty"`
 }
 
 // MigrationProgress tracks the progress of a migration operation
@@ -374,10 +377,10 @@ func (dm *DatabaseManager) insertTrackTx(tx *sql.Tx, track *JSONTrack, artistStm
 	result, err := tx.Exec(`
 		INSERT INTO tracks (
 			persistent_id, name, artist_id, album_id, genre_id,
-			collection, rating, starred, date_added
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+			collection, rating, starred, is_streaming, track_kind, stream_url, date_added
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, persistentID, track.Name, artistID, albumID, genreID,
-		track.Collection, track.Rating, track.Starred, time.Now())
+		track.Collection, track.Rating, track.Starred, track.IsStreaming, track.Kind, track.StreamURL, time.Now())
 
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert track: %w", err)
@@ -452,10 +455,10 @@ func (dm *DatabaseManager) updateTrackTx(tx *sql.Tx, trackID int64, track *JSONT
 	_, err = tx.Exec(`
 		UPDATE tracks SET
 			name = ?, artist_id = ?, album_id = ?, genre_id = ?,
-			collection = ?, rating = ?, starred = ?, updated_at = CURRENT_TIMESTAMP
+			collection = ?, rating = ?, starred = ?, is_streaming = ?, track_kind = ?, stream_url = ?, updated_at = CURRENT_TIMESTAMP
 		WHERE id = ?
 	`, track.Name, artistID, albumID, genreID,
-		track.Collection, track.Rating, track.Starred, trackID)
+		track.Collection, track.Rating, track.Starred, track.IsStreaming, track.Kind, track.StreamURL, trackID)
 
 	if err != nil {
 		return 0, fmt.Errorf("failed to update track: %w", err)

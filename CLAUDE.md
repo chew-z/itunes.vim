@@ -174,7 +174,7 @@ The iTunes MCP server provides 7 tools for comprehensive iTunes/Apple Music inte
 - **Returns**: JSON array of tracks in the playlist with full metadata
 
 ### `search_advanced`
-- **Description**: Advanced search with filters for genre, artist, album, rating, and starred status
+- **Description**: Advanced search with filters for genre, artist, album, rating, starred status, and streaming tracks
 - **Parameters**:
   - `query` (string, required): The search query for track names, artists, or albums
   - `genre` (string, optional): Filter by genre (partial match supported)
@@ -183,8 +183,10 @@ The iTunes MCP server provides 7 tools for comprehensive iTunes/Apple Music inte
   - `playlist` (string, optional): Filter to tracks in a specific playlist
   - `min_rating` (number, optional): Minimum rating (0-100). Only returns tracks with rating >= this value
   - `starred` (boolean, optional): If true, only return starred/loved tracks. If false, return all tracks
+  - `streaming_only` (boolean, optional): If true, only return streaming tracks (e.g., radio stations). If false, return all tracks
+  - `local_only` (boolean, optional): If true, only return local (non-streaming) tracks. If false, return all tracks
   - `limit` (number, optional): Maximum number of results to return. Default is 15
-- **Returns**: JSON array of matching tracks with metadata
+- **Returns**: JSON array of matching tracks with metadata including streaming indicators
 
 ## Usage Patterns
 
@@ -243,6 +245,79 @@ The iTunes MCP server provides 7 tools for comprehensive iTunes/Apple Music inte
 
 - `itunes://database/stats` - Database statistics and metadata (track count, playlist count, database size, etc.)
 - `itunes://database/playlists` - List of all playlists in the iTunes library with metadata
+
+## Streaming Track Support
+
+The system provides comprehensive support for streaming tracks (Internet audio streams like SomaFM radio stations) with different behavior from local tracks.
+
+### Detection and Identification
+
+**Streaming tracks are identified by:**
+- `kind`: `"Internet audio stream"`
+- `is_streaming`: `true`
+- `stream_url`: The actual stream URL (e.g., `"http://ice6.somafm.com/insound-128-aac"`)
+- `size`: `null` (no local file)
+- `duration`: `null` (continuous stream)
+
+### Different Response Structures
+
+**For streaming tracks, `now_playing` returns:**
+```json
+{
+  "status": "playing",
+  "track": {
+    "id": "CD48A79AC1F96E4C",
+    "name": "SomaFM: The In-Sound (Special)",
+    "artist": "",
+    "album": "",
+    "position": "2:07",
+    "position_seconds": 127,
+    "is_streaming": true,
+    "kind": "Internet audio stream",
+    "stream_url": "http://ice6.somafm.com/insound-128-aac"
+  },
+  "display": "SomaFM: The In-Sound (Special) [STREAMING]"
+}
+```
+
+**For local tracks, `now_playing` returns:**
+```json
+{
+  "status": "playing",
+  "track": {
+    "id": "4F590B5F6DF1384A",
+    "name": "Humming In The Night",
+    "artist": "Akira Kosemura",
+    "album": "Stellar (EP) - EP",
+    "position": "0:00",
+    "duration": "5:08",
+    "position_seconds": 0,
+    "duration_seconds": 308
+  },
+  "display": "Humming In The Night – Akira Kosemura"
+}
+```
+
+### Key Differences
+
+- **Position tracking**: Streaming tracks show elapsed time since stream started, but no total duration
+- **Display format**: Streaming tracks include `[STREAMING]` indicator
+- **Search results**: Include `is_streaming`, `kind`, and `stream_url` fields for streaming tracks
+- **Filtering**: Use `streaming_only` or `local_only` parameters in `search_advanced` tool
+
+### Usage with Streaming Tracks
+
+**Search for streaming tracks only:**
+```json
+{"query": "soma", "streaming_only": true}
+```
+
+**Play streaming track:**
+```json
+{"track_id": "CD48A79AC1F96E4C"}
+```
+
+All playback operations work identically for streaming and local tracks using persistent IDs.
 
 ## Recent Critical Updates
 
@@ -319,6 +394,37 @@ The iTunes MCP server provides 7 tools for comprehensive iTunes/Apple Music inte
 - **Error Handling**: Comprehensive error messages for database and JXA operation failures
 
 **Result**: Reliable system with 100% track playability and graceful error handling.
+
+### 6. Streaming Track Support Implementation (2025-07-23)
+**Major Feature Addition**: Comprehensive support for streaming tracks (Internet audio streams) with differentiated behavior.
+
+**Problem**: Streaming tracks (like SomaFM radio stations) were not properly identified and behaved identically to local tracks, confusing users with meaningless duration/position information.
+
+**Solution**: Implemented streaming track detection and appropriate response structures.
+
+**Key Features:**
+- **Streaming Detection**: Identifies tracks by `kind: "Internet audio stream"`
+- **Different Response Structures**: Streaming tracks return position but no duration (continuous streams)
+- **Visual Indicators**: `[STREAMING]` display indicator for streaming tracks
+- **Advanced Filtering**: `streaming_only` and `local_only` parameters in `search_advanced` tool
+- **Stream URL Extraction**: Captures actual stream URLs for streaming tracks
+
+**Technical Implementation:**
+- **Database Schema**: Added `is_streaming`, `track_kind`, and `stream_url` columns to tracks table
+- **JavaScript Detection**: Enhanced JXA scripts to detect streaming properties via `track.kind()` and `track.address()`
+- **Appropriate Responses**: Streaming tracks show elapsed time but no total duration
+- **Database Migration**: Schema version 2 with backward compatibility
+
+**Files Modified:**
+- `database/schema.go` - Added migration for streaming fields
+- `database/database.go` - Updated Track struct and search functions with streaming support
+- `database/migrate.go` - Updated JSON parsing and database insertion for streaming fields
+- `itunes/scripts/iTunes_Refresh_Library.js` - Added streaming detection and metadata extraction
+- `itunes/scripts/iTunes_Now_Playing.js` - Different response structures for streaming vs local tracks
+- `itunes/itunes.go` - Updated Track struct and conversion functions
+- `mcp-server/main.go` - Added streaming filters to search_advanced tool
+
+**Result**: Clear differentiation between streaming and local tracks with appropriate user experience for each type.
 
 ## Development Notes
 
