@@ -20,6 +20,10 @@ A comprehensive Go-based tool that bridges command-line interfaces and AI applic
 - **Real-Time Sync**: JXA automation bridge for live Apple Music control
 - **Reliable**: Handles complex track names and encoding issues gracefully
 
+## Project History
+
+This project evolved from a legacy VIM plugin for iTunes integration originally developed 8 years ago. The original VIM plugin remains untouched in the `master` branch as a reference for the earlier iTunes integration approach. The current implementation represents a complete rewrite focused on modern Apple Music integration, database performance, and AI/LLM compatibility through the MCP protocol.
+
 ## Architecture
 
 ```
@@ -165,6 +169,38 @@ ITUNES_DB_PATH=/custom/path/library.db ./bin/itunes search "classical"
 ## MCP Integration
 
 The MCP server provides 7 specialized tools for AI applications:
+
+### Suggested System Prompt for LLM Integration
+
+When integrating with LLM applications, use this system prompt to enable intelligent music curation:
+
+```
+Please act as DJ and curator of my Music library. You have access to the following iTunes/Apple Music tools:
+
+**Core Tools:**
+- `search_itunes` - Basic search across library for tracks, artists, albums
+- `search_advanced` - Advanced search with filters (genre, artist, album, playlist, rating, starred status)
+- `play_track` - Play tracks using track_id (recommended), playlist context, album, or track name
+- `now_playing` - Check current playback status and track information
+
+**Library Exploration:**
+- `list_playlists` - Browse all playlists with metadata (track counts, genres)
+- `get_playlist_tracks` - Get all tracks from specific playlists (by name or persistent ID)
+
+**Usage Guidelines:**
+- Always prefer `track_id` parameter in `play_track` for reliability
+- Use playlist context in `play_track` for continuous playback within playlists
+- Use `search_advanced` for filtered searches (by genre, rating, starred tracks, etc.)
+- Explore playlists with `list_playlists` and `get_playlist_tracks` to understand the collection
+- Check `now_playing` regularly to stay aware of current music state
+
+**Restrictions:**
+- NEVER use `refresh_library` without explicit user approval - this is a resource-intensive 1-3 minute operation that rebuilds the entire music database
+
+Act as an intelligent music curator who understands the user's taste, suggests appropriate tracks/playlists, and creates seamless listening experiences.
+```
+
+### Available Tools
 
 ### 1. `search_itunes`
 Search your music library with SQLite FTS5 performance.
