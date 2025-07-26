@@ -122,6 +122,24 @@ func main() {
 		),
 	)
 
+	// Create stream playback tool
+	playStreamTool := mcp.NewTool("play_stream",
+		mcp.WithDescription("Play Apple Music stream from an itmss:// or https://music.apple.com/ URL."),
+		mcp.WithString("url",
+			mcp.Required(),
+			mcp.Description("The itmss:// or https://music.apple.com/ URL to play."),
+		),
+	)
+
+	// Create station search tool
+	searchStationsTool := mcp.NewTool("search_stations",
+		mcp.WithDescription("Search for Apple Music radio stations by genre, name, or keywords."),
+		mcp.WithString("query",
+			mcp.Required(),
+			mcp.Description("Search query for stations (e.g., 'country', 'jazz', 'rock', 'classical')."),
+		),
+	)
+
 	// Add tools to server
 	mcpServer.AddTool(searchTool, searchHandler)
 	mcpServer.AddTool(playTool, playHandler)
@@ -130,6 +148,8 @@ func main() {
 	mcpServer.AddTool(listPlaylistsTool, listPlaylistsHandler)
 	mcpServer.AddTool(getPlaylistTracksTool, getPlaylistTracksHandler)
 	mcpServer.AddTool(searchAdvancedTool, searchAdvancedHandler)
+	mcpServer.AddTool(playStreamTool, playStreamHandler)
+	mcpServer.AddTool(searchStationsTool, searchStationsHandler)
 
 	// Add MCP resources for database statistics
 	dbStatsResource := mcp.NewResource(
@@ -408,6 +428,72 @@ func searchAdvancedHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 
 	return mcp.NewToolResultText(string(result)), nil
+}
+
+func playStreamHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var params struct {
+		URL string `json:"url"`
+	}
+
+	argBytes, err := json.Marshal(request.Params.Arguments)
+	if err != nil {
+		return mcp.NewToolResultError("Failed to marshal arguments: " + err.Error()), nil
+	}
+
+	if err := json.Unmarshal(argBytes, &params); err != nil {
+		return mcp.NewToolResultError("Invalid arguments: " + err.Error()), nil
+	}
+
+	if params.URL == "" {
+		return mcp.NewToolResultError("URL parameter is required"), nil
+	}
+
+	// Play the stream using the new function
+	result, err := itunes.PlayStreamURL(params.URL)
+	if err != nil {
+		return mcp.NewToolResultError("Failed to play stream: " + err.Error()), nil
+	}
+
+	// Return the play result as JSON
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		return mcp.NewToolResultError("Failed to format result: " + err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(string(resultJSON)), nil
+}
+
+func searchStationsHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	var params struct {
+		Query string `json:"query"`
+	}
+
+	argBytes, err := json.Marshal(request.Params.Arguments)
+	if err != nil {
+		return mcp.NewToolResultError("Failed to marshal arguments: " + err.Error()), nil
+	}
+
+	if err := json.Unmarshal(argBytes, &params); err != nil {
+		return mcp.NewToolResultError("Invalid arguments: " + err.Error()), nil
+	}
+
+	if params.Query == "" {
+		return mcp.NewToolResultError("Query parameter is required"), nil
+	}
+
+	// Search for stations using the new function
+	result, err := itunes.SearchStations(params.Query)
+	if err != nil {
+		return mcp.NewToolResultError("Failed to search stations: " + err.Error()), nil
+	}
+
+	// Return the search result as JSON
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		return mcp.NewToolResultError("Failed to format result: " + err.Error()), nil
+	}
+
+	return mcp.NewToolResultText(string(resultJSON)), nil
 }
 
 func playlistsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {

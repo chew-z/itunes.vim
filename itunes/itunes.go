@@ -7,9 +7,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -47,6 +50,24 @@ type PlaylistData struct {
 	SpecialKind string `json:"special_kind"` // "none" for user playlists
 	TrackCount  int    `json:"track_count"`
 	Genre       string `json:"genre,omitempty"`
+}
+
+// Station represents an Apple Music radio station
+type Station struct {
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	URL         string   `json:"url"`
+	Genre       string   `json:"genre"`
+	Keywords    []string `json:"keywords"`
+}
+
+// StationSearchResult represents the result of a station search
+type StationSearchResult struct {
+	Status   string    `json:"status"`
+	Query    string    `json:"query"`
+	Stations []Station `json:"stations"`
+	Count    int       `json:"count"`
+	Message  string    `json:"message,omitempty"`
 }
 
 // RefreshStats contains statistics from a library refresh operation
@@ -458,6 +479,73 @@ func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID str
 	return result, nil
 }
 
+// PlayStreamURL plays a stream from an itmss:// or https://music.apple.com/ URL
+func PlayStreamURL(streamURL string) (*PlayResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Create temporary file for the embedded script
+	tempFile, err := os.CreateTemp("", "itunes_play_stream_*.js")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+
+	if _, err := tempFile.WriteString(playStreamScript); err != nil {
+		return nil, fmt.Errorf("failed to write play stream script to temp file: %w", err)
+	}
+	tempFile.Close()
+
+	cmd := exec.CommandContext(ctx, "osascript", tempFile.Name(), streamURL)
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	err = cmd.Run()
+	response := strings.TrimSpace(stdout.String())
+
+	result := &PlayResult{
+		Success: err == nil && strings.HasPrefix(response, "OK:"),
+	}
+
+	if err != nil {
+		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
+			result.Message = fmt.Sprintf("Stream playback failed: %s", response)
+			return result, nil
+		}
+		result.Message = fmt.Sprintf("Script execution failed: %v", err)
+		return result, nil
+	}
+
+	if strings.HasPrefix(response, "ERROR:") {
+		result.Success = false
+		result.Message = strings.TrimPrefix(response, "ERROR: ")
+		return result, nil
+	}
+
+	// Give Apple Music a moment to start streaming
+	time.Sleep(1 * time.Second)
+
+	// Get current playing status
+	nowPlaying, nowPlayingErr := GetNowPlaying()
+	if nowPlayingErr != nil {
+		// Don't fail the whole operation if we can't get now playing info
+		result.Message = strings.TrimPrefix(response, "OK: ")
+		return result, nil
+	}
+
+	result.NowPlaying = nowPlaying
+
+	// Create a success message based on what's playing
+	if nowPlaying.Status == "streaming" && nowPlaying.Stream != nil {
+		result.Message = fmt.Sprintf("Started streaming: %s", nowPlaying.Stream.Name)
+	} else {
+		result.Message = strings.TrimPrefix(response, "OK: ")
+	}
+
+	return result, nil
+}
+
 // Database integration variables
 var (
 	dbManager     *database.DatabaseManager
@@ -627,4 +715,167 @@ func SearchTracks(query string) ([]Track, error) {
 		return nil, errors.New("database not initialized - please run InitDatabase() first")
 	}
 	return SearchTracksFromDatabase(query, nil)
+}
+
+// SearchStations searches for Apple Music radio stations by scraping the web interface
+func SearchStations(query string) (*StationSearchResult, error) {
+	stations, err := scrapeAppleMusicStations()
+	if err != nil {
+		return nil, fmt.Errorf("failed to scrape stations: %w", err)
+	}
+
+	// Filter stations based on search query
+	var matches []Station
+	queryLower := strings.ToLower(query)
+
+	for _, station := range stations {
+		score := 0
+
+		// Check name match
+		if strings.Contains(strings.ToLower(station.Name), queryLower) {
+			score += 10
+		}
+
+		// Check genre match
+		if strings.Contains(strings.ToLower(station.Genre), queryLower) {
+			score += 8
+		}
+
+		// Check keywords match
+		for _, keyword := range station.Keywords {
+			if strings.Contains(strings.ToLower(keyword), queryLower) {
+				score += 5
+				break
+			}
+		}
+
+		// Check description match
+		if strings.Contains(strings.ToLower(station.Description), queryLower) {
+			score += 3
+		}
+
+		if score > 0 {
+			matches = append(matches, station)
+		}
+	}
+
+	return &StationSearchResult{
+		Status:   "success",
+		Query:    query,
+		Stations: matches,
+		Count:    len(matches),
+	}, nil
+}
+
+// scrapeAppleMusicStations scrapes the Apple Music radio page to get current stations
+func scrapeAppleMusicStations() ([]Station, error) {
+	client := &http.Client{
+		Timeout: 15 * time.Second,
+	}
+
+	resp, err := client.Get("https://music.apple.com/us/radio")
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch Apple Music radio page: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != 200 {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	content := string(body)
+
+	// Extract station URLs using regex
+	urlRegex := regexp.MustCompile(`https://music\.apple\.com/us/station/([^/"]+)/ra\.([0-9]+)`)
+	urlMatches := urlRegex.FindAllStringSubmatch(content, -1)
+
+	// Extract station titles and descriptions
+	titleRegex := regexp.MustCompile(`data-testid="title"[^>]*>([^<]+)`)
+	titleMatches := titleRegex.FindAllStringSubmatch(content, -1)
+
+	headlineRegex := regexp.MustCompile(`data-testid="headline"[^>]*>([^<]+)`)
+	headlineMatches := headlineRegex.FindAllStringSubmatch(content, -1)
+
+	subtitleRegex := regexp.MustCompile(`data-testid="subtitle"[^>]*>([^<]+)`)
+	subtitleMatches := subtitleRegex.FindAllStringSubmatch(content, -1)
+
+	var stations []Station
+
+	// Process the extracted data
+	for i, urlMatch := range urlMatches {
+		if len(urlMatch) < 3 {
+			continue
+		}
+
+		stationSlug := urlMatch[1]
+		stationURL := urlMatch[0]
+
+		// Clean up station name from slug
+		stationName := strings.ReplaceAll(stationSlug, "-", " ")
+		stationName = strings.Title(strings.ToLower(stationName))
+
+		// Try to get title and description if available
+		if i < len(titleMatches) && len(titleMatches[i]) > 1 {
+			stationName = strings.TrimSpace(titleMatches[i][1])
+		}
+
+		description := ""
+		if i < len(subtitleMatches) && len(subtitleMatches[i]) > 1 {
+			description = strings.TrimSpace(subtitleMatches[i][1])
+		}
+
+		genre := "radio"
+		if i < len(headlineMatches) && len(headlineMatches[i]) > 1 {
+			headline := strings.TrimSpace(headlineMatches[i][1])
+			if strings.Contains(strings.ToLower(headline), "country") {
+				genre = "country"
+			} else if strings.Contains(strings.ToLower(headline), "jazz") {
+				genre = "jazz"
+			} else if strings.Contains(strings.ToLower(headline), "rock") {
+				genre = "rock"
+			} else if strings.Contains(strings.ToLower(headline), "hip") {
+				genre = "hip-hop"
+			} else if strings.Contains(strings.ToLower(headline), "electronic") {
+				genre = "electronic"
+			} else if strings.Contains(strings.ToLower(headline), "pop") {
+				genre = "pop"
+			} else if strings.Contains(strings.ToLower(headline), "classical") {
+				genre = "classical"
+			}
+		}
+
+		// Generate keywords from name and description
+		keywords := []string{
+			strings.ToLower(stationName),
+			genre,
+			"radio",
+			"station",
+		}
+
+		// Avoid duplicate stations
+		exists := false
+		for _, existing := range stations {
+			if existing.URL == stationURL {
+				exists = true
+				break
+			}
+		}
+
+		if !exists {
+			stations = append(stations, Station{
+				Name:        stationName,
+				Description: description,
+				URL:         stationURL,
+				Genre:       genre,
+				Keywords:    keywords,
+			})
+		}
+	}
+
+	return stations, nil
 }

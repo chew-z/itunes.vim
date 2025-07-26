@@ -130,9 +130,9 @@ The system now uses SQLite as the primary and only storage backend, with Apple M
 - **Database size**: ~760 bytes per track including indexes
 - **Dependencies**: Only `modernc.org/sqlite` (pure Go SQLite driver)
 
-## MCP Tools (7 Available)
+## MCP Tools (9 Available)
 
-The iTunes MCP server provides 7 tools for comprehensive iTunes/Apple Music integration:
+The iTunes MCP server provides 9 tools for comprehensive iTunes/Apple Music integration:
 
 ### `search_itunes`
 - **Description**: Search iTunes/Apple Music library for tracks using SQLite FTS5
@@ -188,6 +188,17 @@ The iTunes MCP server provides 7 tools for comprehensive iTunes/Apple Music inte
   - `limit` (number, optional): Maximum number of results to return. Default is 15
 - **Returns**: JSON array of matching tracks with metadata including streaming indicators
 
+### `play_stream`
+- **Description**: Play Apple Music stream from an itmss:// or https://music.apple.com/ URL
+- **Parameters**: `url` (string, required) - The itmss:// or https://music.apple.com/ URL to play
+- **Returns**: JSON object with playback result and current track info after streaming starts
+
+### `search_stations`
+- **Description**: Search for Apple Music radio stations by genre, name, or keywords using real-time web scraping
+- **Parameters**: `query` (string, required) - Search query for stations (e.g., 'country', 'jazz', 'rock', 'classical')
+- **Returns**: JSON object with matching stations including name, description, URL, genre, and keywords
+- **Note**: Scrapes live data from Apple Music web interface for current station lineup
+
 ## Usage Patterns
 
 **BEST PRACTICE: ID-based with playlist context (continuous playback):**
@@ -220,6 +231,27 @@ The iTunes MCP server provides 7 tools for comprehensive iTunes/Apple Music inte
 - **FALLBACK**: Use exact `name` field values only when ID not available
 - For empty `collection` fields: ID-based lookup works universally
 - Track ID lookup is immune to encoding/character issues that affect name matching
+
+## Station Search and Play Workflow
+
+**Complete workflow for Apple Music radio stations:**
+
+1. **Search for stations:**
+```json
+{"tool": "search_stations", "arguments": {"query": "jazz"}}
+```
+
+2. **Play a station from search results:**
+```json
+{"tool": "play_stream", "arguments": {"url": "https://music.apple.com/us/station/jazz/ra.1000000362"}}
+```
+
+**Live station discovery:**
+- Dynamically fetches current Apple Music radio stations
+- Includes Apple Music 1, Apple Music Hits, Apple Music Country, Apple Music Club, Apple Music Chill
+- Featured shows and artist interviews
+- Genre-based stations and special programming
+- Real-time availability based on current Apple Music offerings
 
 ## Database System (SQLite Only)
 

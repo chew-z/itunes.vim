@@ -10,3 +10,6 @@ var refreshScript string
 
 //go:embed scripts/iTunes_Now_Playing.js
 var nowPlayingScript string
+
+//go:embed scripts/iTunes_Play_Stream_URL.js
+var playStreamScript string
