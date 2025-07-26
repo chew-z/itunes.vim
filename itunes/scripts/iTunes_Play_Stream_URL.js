@@ -1,5 +1,5 @@
 #!/usr/bin/env osascript -l JavaScript
-// Play Apple Music stream from itmss:// URL
+// Play streaming URL in Apple Music - supports various streaming formats
 ObjC.import('stdlib')
 
 function run(argv) {
@@ -21,7 +21,7 @@ function run(argv) {
     
     try {
         if (argv.length === 0) {
-            return "ERROR: No URL provided. Usage: play_stream <itmss://url>"
+            return "ERROR: No URL provided. Usage: play_stream <streaming_url>"
         }
         
         let streamUrl = argv[0]
@@ -30,22 +30,16 @@ function run(argv) {
             console.log("Attempting to play stream URL: " + streamUrl)
         }
         
-        // Validate URL format
-        if (!streamUrl.startsWith('itmss://') && !streamUrl.startsWith('https://music.apple.com/')) {
-            return "ERROR: Invalid URL format. Expected itmss:// or https://music.apple.com/ URL"
-        }
-        
-        // Convert https://music.apple.com to itmss:// if needed
-        if (streamUrl.startsWith('https://music.apple.com/')) {
-            streamUrl = streamUrl.replace('https://music.apple.com/', 'itmss://music.apple.com/')
-            if (verbose) {
-                console.log("Converted to itmss:// format: " + streamUrl)
-            }
+        // Validate that it's some kind of URL
+        if (!streamUrl.includes('://')) {
+            return "ERROR: Invalid URL format. Please provide a valid streaming URL (http://, https://, itmss://, etc.)"
         }
         
         try {
-            // Use Apple Music's open location command to play the stream
+            // Activate Music app and use openLocation to play any streaming URL
+            music.activate()
             music.openLocation(streamUrl)
+            music.play()
             
             // Small delay to allow stream to start
             $.NSThread.sleepForTimeInterval(1.0)

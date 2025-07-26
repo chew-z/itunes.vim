@@ -124,10 +124,10 @@ func main() {
 
 	// Create stream playback tool
 	playStreamTool := mcp.NewTool("play_stream",
-		mcp.WithDescription("Play Apple Music stream from an itmss:// or https://music.apple.com/ URL."),
+		mcp.WithDescription("Play streaming audio from any supported URL (itmss://, https://, http://, etc.) in Apple Music."),
 		mcp.WithString("url",
 			mcp.Required(),
-			mcp.Description("The itmss:// or https://music.apple.com/ URL to play."),
+			mcp.Description("The streaming URL to play (supports itmss://, https://music.apple.com/, http://, https://, and other streaming formats)."),
 		),
 	)
 

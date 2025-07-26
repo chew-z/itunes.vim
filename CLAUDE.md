@@ -189,8 +189,8 @@ The iTunes MCP server provides 9 tools for comprehensive iTunes/Apple Music inte
 - **Returns**: JSON array of matching tracks with metadata including streaming indicators
 
 ### `play_stream`
-- **Description**: Play Apple Music stream from an itmss:// or https://music.apple.com/ URL
-- **Parameters**: `url` (string, required) - The itmss:// or https://music.apple.com/ URL to play
+- **Description**: Play streaming audio from any supported URL (itmss://, https://, http://, etc.) in Apple Music
+- **Parameters**: `url` (string, required) - The streaming URL to play (supports itmss://, https://music.apple.com/, http://, https://, and other streaming formats)
 - **Returns**: JSON object with playback result and current track info after streaming starts
 
 ### `search_stations`

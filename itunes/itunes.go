@@ -479,7 +479,7 @@ func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID str
 	return result, nil
 }
 
-// PlayStreamURL plays a stream from an itmss:// or https://music.apple.com/ URL
+// PlayStreamURL plays a stream from any supported streaming URL (itmss://, https://, http://, etc.)
 func PlayStreamURL(streamURL string) (*PlayResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
