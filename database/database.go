@@ -891,9 +891,11 @@ func (dm *DatabaseManager) SearchRadioStations(query string, filters *RadioStati
 	var conditions []string
 	args := []interface{}{}
 
-	// Always use FTS5 for searching, even with an empty query to get all results
-	conditions = append(conditions, "rs.id IN (SELECT rowid FROM radio_stations_fts WHERE radio_stations_fts MATCH ?)")
-	args = append(args, query)
+	// Use FTS5 only when a query is provided
+	if query != "" {
+		conditions = append(conditions, "rs.id IN (SELECT rowid FROM radio_stations_fts WHERE radio_stations_fts MATCH ?)")
+		args = append(args, query)
+	}
 
 	// Add filters
 	if filters.Genre != "" {
