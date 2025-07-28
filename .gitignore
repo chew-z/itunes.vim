@@ -11,3 +11,4 @@ run_*
 .vscode/**
 
 test_*
+stations.json

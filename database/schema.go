@@ -7,7 +7,7 @@ import (
 )
 
 // SchemaVersion represents the current database schema version
-const SchemaVersion = 2
+const SchemaVersion = 4
 
 // Migration represents a database migration
 type Migration struct {
@@ -274,6 +274,252 @@ var Schema = []Migration{
 		
 		-- Remove migration record
 		DELETE FROM schema_migrations WHERE version = 2;
+		`,
+	},
+	{
+		Version:     3,
+		Description: "Add radio stations table with genre integration",
+		Up: `
+		-- Radio stations table leveraging existing genres
+		CREATE TABLE IF NOT EXISTS radio_stations (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			url TEXT NOT NULL UNIQUE,
+			description TEXT,
+			genre_id INTEGER,
+			country TEXT,
+			language TEXT,
+			quality TEXT, -- e.g., "128k AAC", "320k MP3"
+			homepage TEXT,
+			verified_at DATETIME,
+			is_active BOOLEAN DEFAULT TRUE,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (genre_id) REFERENCES genres(id)
+		);
+
+		-- FTS5 virtual table for radio station search
+		CREATE VIRTUAL TABLE IF NOT EXISTS radio_stations_fts USING fts5(
+			name,
+			description,
+			genre_name,
+			country,
+			language,
+			tokenize='unicode61 remove_diacritics 2'
+		);
+
+		-- Triggers to keep FTS5 table in sync (using LEFT JOIN for safety)
+		CREATE TRIGGER IF NOT EXISTS radio_stations_fts_insert AFTER INSERT ON radio_stations
+		BEGIN
+			INSERT INTO radio_stations_fts(rowid, name, description, genre_name, country, language)
+			SELECT
+				NEW.id,
+				NEW.name,
+				COALESCE(NEW.description, ''),
+				COALESCE(g.name, 'Unknown'),
+				COALESCE(NEW.country, ''),
+				COALESCE(NEW.language, '')
+			FROM (SELECT 1) AS dummy
+			LEFT JOIN genres g ON g.id = NEW.genre_id;
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS radio_stations_fts_update AFTER UPDATE ON radio_stations
+		BEGIN
+			UPDATE radio_stations_fts
+			SET name = NEW.name,
+				description = COALESCE(NEW.description, ''),
+				genre_name = COALESCE((SELECT name FROM genres WHERE id = NEW.genre_id), 'Unknown'),
+				country = COALESCE(NEW.country, ''),
+				language = COALESCE(NEW.language, '')
+			WHERE rowid = NEW.id;
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS radio_stations_fts_delete AFTER DELETE ON radio_stations
+		BEGIN
+			DELETE FROM radio_stations_fts WHERE rowid = OLD.id;
+		END;
+
+		-- Update timestamp trigger
+		CREATE TRIGGER IF NOT EXISTS update_radio_stations_timestamp AFTER UPDATE ON radio_stations
+		BEGIN
+			UPDATE radio_stations SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+		END;
+
+		-- Indexes for performance
+		CREATE INDEX IF NOT EXISTS idx_radio_stations_genre_id ON radio_stations(genre_id);
+		CREATE INDEX IF NOT EXISTS idx_radio_stations_country ON radio_stations(country);
+		CREATE INDEX IF NOT EXISTS idx_radio_stations_active ON radio_stations(is_active);
+		CREATE INDEX IF NOT EXISTS idx_radio_stations_verified ON radio_stations(verified_at);
+
+		-- Update schema version
+		INSERT INTO schema_migrations (version, description) VALUES (3, 'Add radio stations table with genre integration');
+		`,
+		Down: `
+		DROP TRIGGER IF EXISTS update_radio_stations_timestamp;
+		DROP TRIGGER IF EXISTS radio_stations_fts_delete;
+		DROP TRIGGER IF EXISTS radio_stations_fts_update;
+		DROP TRIGGER IF EXISTS radio_stations_fts_insert;
+		DROP TABLE IF EXISTS radio_stations_fts;
+		DROP INDEX IF EXISTS idx_radio_stations_verified;
+		DROP INDEX IF EXISTS idx_radio_stations_active;
+		DROP INDEX IF EXISTS idx_radio_stations_country;
+		DROP INDEX IF EXISTS idx_radio_stations_genre_id;
+		DROP TABLE IF EXISTS radio_stations;
+		DELETE FROM schema_migrations WHERE version = 3;
+		`,
+	},
+	{
+		Version:     4,
+		Description: "Clean up radio stations schema - remove superficial fields",
+		Up: `
+		-- Create new simplified radio_stations table
+		CREATE TABLE IF NOT EXISTS radio_stations_new (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			url TEXT NOT NULL UNIQUE,
+			description TEXT,
+			genre_id INTEGER,
+			homepage TEXT, -- https:// web URLs for browser access
+			verified_at DATETIME,
+			is_active BOOLEAN DEFAULT TRUE,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (genre_id) REFERENCES genres(id)
+		);
+
+		-- Copy data from old table, converting homepage URLs
+		INSERT INTO radio_stations_new (
+			id, name, url, description, genre_id, homepage, 
+			verified_at, is_active, created_at, updated_at
+		)
+		SELECT 
+			id, name, url, description, genre_id,
+			-- Convert itmss:// homepage URLs back to https:// for web browser access
+			CASE 
+				WHEN homepage LIKE 'itmss://music.apple.com%' THEN 
+					REPLACE(REPLACE(homepage, 'itmss://', 'https://'), '?app=music', '')
+				ELSE homepage
+			END,
+			verified_at, is_active, created_at, updated_at
+		FROM radio_stations;
+
+		-- Drop old table and rename new one
+		DROP TABLE radio_stations;
+		ALTER TABLE radio_stations_new RENAME TO radio_stations;
+
+		-- Recreate simplified FTS5 table
+		DROP TABLE IF EXISTS radio_stations_fts;
+		CREATE VIRTUAL TABLE IF NOT EXISTS radio_stations_fts USING fts5(
+			name,
+			description,
+			genre_name,
+			tokenize='unicode61 remove_diacritics 2'
+		);
+
+		-- Triggers to keep FTS5 table in sync (simplified)
+		DROP TRIGGER IF EXISTS radio_stations_fts_insert;
+		DROP TRIGGER IF EXISTS radio_stations_fts_update;
+		DROP TRIGGER IF EXISTS radio_stations_fts_delete;
+
+		CREATE TRIGGER IF NOT EXISTS radio_stations_fts_insert AFTER INSERT ON radio_stations
+		BEGIN
+			INSERT INTO radio_stations_fts(rowid, name, description, genre_name)
+			SELECT
+				NEW.id,
+				NEW.name,
+				COALESCE(NEW.description, ''),
+				COALESCE(g.name, 'Unknown')
+			FROM (SELECT 1) AS dummy
+			LEFT JOIN genres g ON g.id = NEW.genre_id;
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS radio_stations_fts_update AFTER UPDATE ON radio_stations
+		BEGIN
+			UPDATE radio_stations_fts
+			SET name = NEW.name,
+				description = COALESCE(NEW.description, ''),
+				genre_name = COALESCE((SELECT name FROM genres WHERE id = NEW.genre_id), 'Unknown')
+			WHERE rowid = NEW.id;
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS radio_stations_fts_delete AFTER DELETE ON radio_stations
+		BEGIN
+			DELETE FROM radio_stations_fts WHERE rowid = OLD.id;
+		END;
+
+		-- Update timestamp trigger
+		CREATE TRIGGER IF NOT EXISTS update_radio_stations_timestamp AFTER UPDATE ON radio_stations
+		BEGIN
+			UPDATE radio_stations SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+		END;
+
+		-- Simplified indexes for performance
+		CREATE INDEX IF NOT EXISTS idx_radio_stations_genre_id ON radio_stations(genre_id);
+		CREATE INDEX IF NOT EXISTS idx_radio_stations_active ON radio_stations(is_active);
+		CREATE INDEX IF NOT EXISTS idx_radio_stations_verified ON radio_stations(verified_at);
+
+		-- Repopulate FTS5 table with existing data
+		INSERT INTO radio_stations_fts(rowid, name, description, genre_name)
+		SELECT 
+			rs.id,
+			rs.name,
+			COALESCE(rs.description, ''),
+			COALESCE(g.name, 'Unknown')
+		FROM radio_stations rs
+		LEFT JOIN genres g ON g.id = rs.genre_id;
+
+		-- Update schema version
+		INSERT INTO schema_migrations (version, description) VALUES (4, 'Clean up radio stations schema - remove superficial fields');
+		`,
+		Down: `
+		-- Recreate old table structure
+		CREATE TABLE IF NOT EXISTS radio_stations_old (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			url TEXT NOT NULL UNIQUE,
+			description TEXT,
+			genre_id INTEGER,
+			country TEXT,
+			language TEXT,
+			quality TEXT,
+			homepage TEXT,
+			verified_at DATETIME,
+			is_active BOOLEAN DEFAULT TRUE,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (genre_id) REFERENCES genres(id)
+		);
+
+		-- Copy data back with default values for removed fields
+		INSERT INTO radio_stations_old (
+			id, name, url, description, genre_id, 
+			country, language, quality, homepage,
+			verified_at, is_active, created_at, updated_at
+		)
+		SELECT 
+			id, name, url, description, genre_id,
+			'US', 'English', '256k AAC',
+			-- Convert https:// homepage URLs back to itmss:// 
+			CASE 
+				WHEN homepage LIKE 'https://music.apple.com%' THEN 
+					REPLACE(homepage, 'https://', 'itmss://') || '?app=music'
+				ELSE homepage
+			END,
+			verified_at, is_active, created_at, updated_at
+		FROM radio_stations;
+
+		-- Drop new table and rename old one
+		DROP TABLE radio_stations;
+		ALTER TABLE radio_stations_old RENAME TO radio_stations;
+
+		-- Recreate old FTS5 structure and triggers (simplified for rollback)
+		DROP TABLE IF EXISTS radio_stations_fts;
+		CREATE VIRTUAL TABLE IF NOT EXISTS radio_stations_fts USING fts5(
+			name, description, genre_name, country, language,
+			tokenize='unicode61 remove_diacritics 2'
+		);
+
+		DELETE FROM schema_migrations WHERE version = 4;
 		`,
 	},
 }
