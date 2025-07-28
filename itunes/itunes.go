@@ -406,11 +406,12 @@ func GetNowPlaying() (*NowPlayingStatus, error) {
 	// Handle different states based on track type
 	if jsResponse.Track != nil && jsResponse.Track.IsStreaming {
 		// Streaming track
-		if jsResponse.Status == "playing" {
+		switch jsResponse.Status {
+		case "playing":
 			status.Status = "streaming"
-		} else if jsResponse.Status == "paused" {
+		case "paused":
 			status.Status = "streaming_paused"
-		} else {
+		default:
 			status.Status = jsResponse.Status
 		}
 
@@ -457,7 +458,7 @@ func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID str
 	if nowPlayingErr != nil {
 		// Don't fail the whole operation if we can't get now playing info
 		result.Message = "Playback started, but could not get current track info"
-		return result, nil
+		return result, fmt.Errorf("could not get 'now playing' status after starting playback: %w", nowPlayingErr)
 	}
 
 	result.NowPlaying = nowPlaying
