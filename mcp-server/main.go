@@ -178,6 +178,11 @@ func main() {
 }
 
 func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := itunes.InitDatabase(); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to re-initialize database: %v", err)), nil
+	}
+	defer itunes.CloseDatabase()
+
 	query, err := request.RequireString("query")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid query parameter: %v", err)), nil
@@ -201,6 +206,11 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 }
 
 func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := itunes.InitDatabase(); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to re-initialize database: %v", err)), nil
+	}
+	defer itunes.CloseDatabase()
+
 	// Get parameters - track_id is preferred, then track name as fallback
 	trackID := request.GetString("track_id", "")
 	playlist := request.GetString("playlist", "")
@@ -283,6 +293,11 @@ func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 
 // Resource handlers for cache access
 func dbStatsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	if err := itunes.InitDatabase(); err != nil {
+		return nil, fmt.Errorf("failed to re-initialize database: %v", err)
+	}
+	defer itunes.CloseDatabase()
+
 	stats, err := itunes.GetDatabaseStats()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database stats: %w", err)
@@ -303,6 +318,11 @@ func dbStatsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp
 }
 
 func listPlaylistsHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := itunes.InitDatabase(); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to re-initialize database: %v", err)), nil
+	}
+	defer itunes.CloseDatabase()
+
 	playlists, err := itunes.ListPlaylists()
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list playlists: %v", err)), nil
@@ -337,6 +357,11 @@ func listPlaylistsHandler(ctx context.Context, request mcp.CallToolRequest) (*mc
 }
 
 func getPlaylistTracksHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := itunes.InitDatabase(); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to re-initialize database: %v", err)), nil
+	}
+	defer itunes.CloseDatabase()
+
 	playlist, err := request.RequireString("playlist")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid playlist parameter: %v", err)), nil
@@ -362,6 +387,11 @@ func getPlaylistTracksHandler(ctx context.Context, request mcp.CallToolRequest) 
 }
 
 func searchAdvancedHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := itunes.InitDatabase(); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to re-initialize database: %v", err)), nil
+	}
+	defer itunes.CloseDatabase()
+
 	query, err := request.RequireString("query")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid query parameter: %v", err)), nil
@@ -464,6 +494,11 @@ func playStreamHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 }
 
 func searchStationsHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := itunes.InitDatabase(); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to re-initialize database: %v", err)), nil
+	}
+	defer itunes.CloseDatabase()
+
 	var params struct {
 		Query string `json:"query"`
 	}
@@ -497,6 +532,11 @@ func searchStationsHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 }
 
 func playlistsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
+	if err := itunes.InitDatabase(); err != nil {
+		return nil, fmt.Errorf("failed to re-initialize database: %v", err)
+	}
+	defer itunes.CloseDatabase()
+
 	playlists, err := itunes.ListPlaylists()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get playlists: %w", err)

@@ -888,56 +888,46 @@ func (dm *DatabaseManager) SearchRadioStations(query string, filters *RadioStati
 	}
 
 	// Build search query
-	var searchQuery string
+	var conditions []string
 	args := []interface{}{}
 
-	if query != "" {
-		// Use FTS5 search when query is provided
-		searchQuery = `
-			SELECT DISTINCT rs.id, rs.name, rs.url, rs.description, 
-				   COALESCE(g.name, '') as genre, rs.genre_id,
-				   COALESCE(rs.homepage, '') as homepage,
-				   rs.verified_at, rs.is_active, rs.created_at, rs.updated_at
-			FROM radio_stations rs
-			LEFT JOIN genres g ON rs.genre_id = g.id
-			WHERE rs.is_active = 1 AND rs.id IN (
-				SELECT rowid FROM radio_stations_fts WHERE radio_stations_fts MATCH ?
-			)
-		`
-		args = append(args, query)
-	} else {
-		// Use regular query when no search term
-		searchQuery = `
-			SELECT DISTINCT rs.id, rs.name, rs.url, rs.description, 
-				   COALESCE(g.name, '') as genre, rs.genre_id,
-				   COALESCE(rs.homepage, '') as homepage,
-				   rs.verified_at, rs.is_active, rs.created_at, rs.updated_at
-			FROM radio_stations rs
-			LEFT JOIN genres g ON rs.genre_id = g.id
-			WHERE rs.is_active = 1
-		`
-	}
+	// Always use FTS5 for searching, even with an empty query to get all results
+	conditions = append(conditions, "rs.id IN (SELECT rowid FROM radio_stations_fts WHERE radio_stations_fts MATCH ?)")
+	args = append(args, query)
 
 	// Add filters
 	if filters.Genre != "" {
-		searchQuery += ` AND g.name LIKE ?`
+		conditions = append(conditions, "g.name LIKE ?")
 		args = append(args, "%"+filters.Genre+"%")
 	}
 
 	if filters.Country != "" {
-		searchQuery += ` AND rs.country = ?`
+		conditions = append(conditions, "rs.country = ?")
 		args = append(args, filters.Country)
 	}
 
 	if filters.Language != "" {
-		searchQuery += ` AND rs.language = ?`
+		conditions = append(conditions, "rs.language = ?")
 		args = append(args, filters.Language)
 	}
 
-	// Order by name (FTS5 relevance ordering requires more complex subquery)
-	searchQuery += ` ORDER BY rs.name`
+	whereClause := ""
+	if len(conditions) > 0 {
+		whereClause = "WHERE " + strings.Join(conditions, " AND ")
+	}
 
-	searchQuery += ` LIMIT ?`
+	searchQuery := fmt.Sprintf(`
+		SELECT DISTINCT rs.id, rs.name, rs.url, rs.description, 
+			   g.name as genre, rs.genre_id,
+			   COALESCE(rs.homepage, '') as homepage,
+			   rs.verified_at, rs.is_active, rs.created_at, rs.updated_at
+		FROM radio_stations rs
+		JOIN genres g ON rs.genre_id = g.id
+		%s
+		ORDER BY rs.name
+		LIMIT ?
+	`, whereClause)
+
 	args = append(args, filters.Limit)
 
 	rows, err := dm.DB.Query(searchQuery, args...)
@@ -965,22 +955,14 @@ func (dm *DatabaseManager) SearchRadioStations(query string, filters *RadioStati
 // AddRadioStation adds a new radio station to the database
 func (dm *DatabaseManager) AddRadioStation(station *RadioStation) error {
 	// Get or create genre (standardize to Title Case)
-	var genreID *int64
-	if station.Genre != "" {
-		genre := strings.Title(strings.ToLower(station.Genre))
-		var gID int64
-		err := dm.DB.QueryRow("SELECT id FROM genres WHERE name = ?", genre).Scan(&gID)
-		if err == sql.ErrNoRows {
-			// Create new genre
-			result, err := dm.DB.Exec("INSERT INTO genres (name) VALUES (?)", genre)
-			if err != nil {
-				return fmt.Errorf("failed to create genre: %w", err)
-			}
-			gID, _ = result.LastInsertId()
-		} else if err != nil {
-			return fmt.Errorf("failed to query genre: %w", err)
-		}
-		genreID = &gID
+	genreName := station.Genre
+	if genreName != "" {
+		genreName = strings.Title(strings.ToLower(genreName))
+	}
+
+	genreID, err := dm.GetOrCreateGenre(genreName)
+	if err != nil {
+		return fmt.Errorf("failed to get or create genre: %w", err)
 	}
 
 	query := `
@@ -988,7 +970,7 @@ func (dm *DatabaseManager) AddRadioStation(station *RadioStation) error {
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 
-	_, err := dm.DB.Exec(query, station.Name, station.URL, station.Description,
+	_, err = dm.DB.Exec(query, station.Name, station.URL, station.Description,
 		genreID, station.Homepage, true)
 
 	if err != nil {
@@ -1004,34 +986,57 @@ func (dm *DatabaseManager) AddRadioStation(station *RadioStation) error {
 
 // UpdateRadioStation updates an existing radio station
 func (dm *DatabaseManager) UpdateRadioStation(id int64, station *RadioStation) error {
-	// Get or create genre if provided (standardize to Title Case)
-	var genreID *int64
-	if station.Genre != "" {
-		genre := strings.Title(strings.ToLower(station.Genre))
-		var gID int64
-		err := dm.DB.QueryRow("SELECT id FROM genres WHERE name = ?", genre).Scan(&gID)
-		if err == sql.ErrNoRows {
-			// Create new genre
-			result, err := dm.DB.Exec("INSERT INTO genres (name) VALUES (?)", genre)
-			if err != nil {
-				return fmt.Errorf("failed to create genre: %w", err)
-			}
-			gID, _ = result.LastInsertId()
-		} else if err != nil {
-			return fmt.Errorf("failed to query genre: %w", err)
-		}
-		genreID = &gID
+	// Start transaction
+	tx, err := dm.DB.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Build query dynamically for partial updates
+	var queryParts []string
+	var args []interface{}
+
+	if station.Name != "" {
+		queryParts = append(queryParts, "name = ?")
+		args = append(args, station.Name)
+	}
+	if station.URL != "" {
+		queryParts = append(queryParts, "url = ?")
+		args = append(args, station.URL)
+	}
+	if station.Description != "" {
+		queryParts = append(queryParts, "description = ?")
+		args = append(args, station.Description)
+	}
+	if station.Homepage != "" {
+		queryParts = append(queryParts, "homepage = ?")
+		args = append(args, station.Homepage)
 	}
 
-	query := `
-		UPDATE radio_stations 
-		SET name = ?, url = ?, description = ?, genre_id = ?, homepage = ?, updated_at = CURRENT_TIMESTAMP
-		WHERE id = ?
-	`
+	// Handle genre update
+	if station.Genre != "" {
+		genreName := strings.Title(strings.ToLower(station.Genre))
+		genreID, err := dm.GetOrCreateGenre(genreName)
+		if err != nil {
+			return fmt.Errorf("failed to get or create genre: %w", err)
+		}
+		queryParts = append(queryParts, "genre_id = ?")
+		args = append(args, genreID)
+	}
 
-	result, err := dm.DB.Exec(query, station.Name, station.URL, station.Description,
-		genreID, station.Homepage, id)
+	if len(queryParts) == 0 {
+		return fmt.Errorf("no fields to update")
+	}
 
+	// Add timestamp update
+	queryParts = append(queryParts, "updated_at = CURRENT_TIMESTAMP")
+
+	// Finalize query
+	query := fmt.Sprintf("UPDATE radio_stations SET %s WHERE id = ?", strings.Join(queryParts, ", "))
+	args = append(args, id)
+
+	result, err := tx.Exec(query, args...)
 	if err != nil {
 		// Check for duplicate URL constraint violation
 		if strings.Contains(err.Error(), "UNIQUE constraint failed: radio_stations.url") {
@@ -1048,7 +1053,7 @@ func (dm *DatabaseManager) UpdateRadioStation(id int64, station *RadioStation) e
 		return fmt.Errorf("radio station with ID %d not found", id)
 	}
 
-	return nil
+	return tx.Commit()
 }
 
 // DeleteRadioStation removes a radio station
@@ -1074,11 +1079,11 @@ func (dm *DatabaseManager) GetRadioStationByID(id int64) (*RadioStation, error) 
 	var station RadioStation
 	query := `
 		SELECT rs.id, rs.name, rs.url, rs.description, 
-			   COALESCE(g.name, '') as genre, rs.genre_id,
+			   g.name as genre, rs.genre_id,
 			   COALESCE(rs.homepage, '') as homepage,
 			   rs.verified_at, rs.is_active, rs.created_at, rs.updated_at
 		FROM radio_stations rs
-		LEFT JOIN genres g ON rs.genre_id = g.id
+		JOIN genres g ON rs.genre_id = g.id
 		WHERE rs.id = ?
 	`
 
@@ -1109,25 +1114,19 @@ func (dm *DatabaseManager) ImportRadioStations(stations []RadioStation) error {
 	successCount := 0
 	for _, station := range stations {
 		// Get or create genre (standardize to Title Case)
-		var genreID *int64
-		if station.Genre != "" {
-			genre := strings.Title(strings.ToLower(station.Genre))
-			var gID int64
-			err := tx.QueryRow("SELECT id FROM genres WHERE name = ?", genre).Scan(&gID)
-			if err == sql.ErrNoRows {
-				result, err := tx.Exec("INSERT INTO genres (name) VALUES (?)", genre)
-				if err != nil {
-					return fmt.Errorf("failed to create genre %s: %w", genre, err)
-				}
-				gID, _ = result.LastInsertId()
-			} else if err != nil {
-				return fmt.Errorf("failed to query genre %s: %w", genre, err)
-			}
-			genreID = &gID
+		genreName := station.Genre
+		if genreName != "" {
+			genreName = strings.Title(strings.ToLower(genreName))
+		}
+
+		genreID, err := dm.GetOrCreateGenre(genreName)
+		if err != nil {
+			log.Printf("Warning: failed to get or create genre for station %s: %v", station.Name, err)
+			continue
 		}
 
 		// Insert station (ignore duplicates)
-		_, err := tx.Exec(`
+		_, err = tx.Exec(`
 			INSERT OR IGNORE INTO radio_stations (name, url, description, genre_id, homepage, is_active)
 			VALUES (?, ?, ?, ?, ?, ?)
 		`, station.Name, station.URL, station.Description, genreID, station.Homepage, true)

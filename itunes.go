@@ -308,9 +308,24 @@ func handleAddStation(args []string) error {
 
 	name := flags["name"]
 	url := flags["url"]
+	genre := flags["genre"]
 
-	if name == "" || url == "" {
-		return fmt.Errorf("--name and --url are required")
+	if name == "" {
+		return fmt.Errorf("missing required flag: --name")
+	}
+	if url == "" {
+		return fmt.Errorf("missing required flag: --url")
+	}
+	if genre == "" {
+		return fmt.Errorf("missing required flag: --genre (and it cannot be empty)")
+	}
+
+	// Optional flags cannot be empty if provided
+	if description, ok := flags["description"]; ok && description == "" {
+		return fmt.Errorf("--description flag cannot be empty when provided")
+	}
+	if homepage, ok := flags["homepage"]; ok && homepage == "" {
+		return fmt.Errorf("--homepage flag cannot be empty when provided")
 	}
 
 	// Validate URL format
@@ -329,7 +344,7 @@ func handleAddStation(args []string) error {
 		Name:        name,
 		URL:         url,
 		Description: flags["description"],
-		Genre:       flags["genre"],
+		Genre:       genre,
 		Homepage:    flags["homepage"],
 	}
 
@@ -348,6 +363,13 @@ func handleUpdateStation(args []string) error {
 
 	flags := parseFlags(args[1:])
 
+	// Check for empty flags
+	for flag, value := range flags {
+		if value == "" {
+			return fmt.Errorf("--%s flag cannot be empty when updating", flag)
+		}
+	}
+
 	// Get database manager
 	dm, err := database.NewDatabaseManager(database.PrimaryDBPath)
 	if err != nil {
@@ -362,23 +384,22 @@ func handleUpdateStation(args []string) error {
 	}
 
 	// Update fields if provided
-	if name := flags["name"]; name != "" {
+	if name, ok := flags["name"]; ok {
 		existingStation.Name = name
 	}
-	if url := flags["url"]; url != "" {
-		// Validate URL format
+	if url, ok := flags["url"]; ok {
 		if err := validateStationURL(url); err != nil {
 			return fmt.Errorf("invalid URL: %w", err)
 		}
 		existingStation.URL = url
 	}
-	if description := flags["description"]; description != "" {
+	if description, ok := flags["description"]; ok {
 		existingStation.Description = description
 	}
-	if genre := flags["genre"]; genre != "" {
+	if genre, ok := flags["genre"]; ok {
 		existingStation.Genre = genre
 	}
-	if homepage := flags["homepage"]; homepage != "" {
+	if homepage, ok := flags["homepage"]; ok {
 		existingStation.Homepage = homepage
 	}
 

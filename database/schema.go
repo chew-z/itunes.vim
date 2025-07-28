@@ -428,9 +428,8 @@ var Schema = []Migration{
 				NEW.id,
 				NEW.name,
 				COALESCE(NEW.description, ''),
-				COALESCE(g.name, 'Unknown')
-			FROM (SELECT 1) AS dummy
-			LEFT JOIN genres g ON g.id = NEW.genre_id;
+				(SELECT name FROM genres WHERE id = NEW.genre_id)
+			;
 		END;
 
 		CREATE TRIGGER IF NOT EXISTS radio_stations_fts_update AFTER UPDATE ON radio_stations
@@ -520,6 +519,183 @@ var Schema = []Migration{
 		);
 
 		DELETE FROM schema_migrations WHERE version = 4;
+		`,
+	},
+	{
+		Version:     5,
+		Description: "Make genre_id in radio_stations not-nullable",
+		Up: `
+		-- Ensure 'Unknown' genre exists and get its ID
+		INSERT OR IGNORE INTO genres (name) VALUES ('Unknown');
+
+		-- Update existing NULL genre_id to point to 'Unknown' genre
+		UPDATE radio_stations
+		SET genre_id = (SELECT id FROM genres WHERE name = 'Unknown')
+		WHERE genre_id IS NULL;
+
+		-- Recreate table with NOT NULL constraint
+		CREATE TABLE radio_stations_new (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			url TEXT NOT NULL UNIQUE,
+			description TEXT,
+			genre_id INTEGER NOT NULL, -- Changed to NOT NULL
+			homepage TEXT,
+			verified_at DATETIME,
+			is_active BOOLEAN DEFAULT TRUE,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (genre_id) REFERENCES genres(id)
+		);
+
+		INSERT INTO radio_stations_new (
+			id, name, url, description, genre_id, homepage, 
+			verified_at, is_active, created_at, updated_at
+		)
+		SELECT 
+			id, name, url, description, genre_id, homepage,
+			verified_at, is_active, created_at, updated_at
+		FROM radio_stations;
+
+		DROP TABLE radio_stations;
+		ALTER TABLE radio_stations_new RENAME TO radio_stations;
+
+		-- Recreate indexes
+		CREATE INDEX IF NOT EXISTS idx_radio_stations_genre_id ON radio_stations(genre_id);
+		CREATE INDEX IF NOT EXISTS idx_radio_stations_active ON radio_stations(is_active);
+		CREATE INDEX IF NOT EXISTS idx_radio_stations_verified ON radio_stations(verified_at);
+
+		-- Repopulate FTS5 table
+		INSERT INTO radio_stations_fts (rowid, name, description, genre_name)
+		SELECT rs.id, rs.name, rs.description, g.name
+		FROM radio_stations rs
+		JOIN genres g ON rs.genre_id = g.id;
+
+		-- Update schema version
+		INSERT INTO schema_migrations (version, description) VALUES (5, 'Make genre_id in radio_stations not-nullable');
+		`,
+		Down: `
+		-- Recreate table without NOT NULL constraint
+		CREATE TABLE radio_stations_old (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			url TEXT NOT NULL UNIQUE,
+			description TEXT,
+			genre_id INTEGER, -- Reverted: NULL allowed
+			homepage TEXT,
+			verified_at DATETIME,
+			is_active BOOLEAN DEFAULT TRUE,
+			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+			FOREIGN KEY (genre_id) REFERENCES genres(id)
+		);
+
+		INSERT INTO radio_stations_old (
+			id, name, url, description, genre_id, homepage, 
+			verified_at, is_active, created_at, updated_at
+		)
+		SELECT 
+			id, name, url, description, genre_id, homepage,
+			verified_at, is_active, created_at, updated_at
+		FROM radio_stations;
+
+		DROP TABLE radio_stations;
+		ALTER TABLE radio_stations_old RENAME TO radio_stations;
+
+		-- Recreate indexes
+		CREATE INDEX IF NOT EXISTS idx_radio_stations_genre_id ON radio_stations(genre_id);
+		CREATE INDEX IF NOT EXISTS idx_radio_stations_active ON radio_stations(is_active);
+		CREATE INDEX IF NOT EXISTS idx_radio_stations_verified ON radio_stations(verified_at);
+
+		DELETE FROM schema_migrations WHERE version = 5;
+		`,
+	},
+	{
+		Version:     6,
+		Description: "Rebuild and repopulate FTS index for radio stations",
+		Up: `
+		-- Drop existing FTS table and triggers
+		DROP TRIGGER IF EXISTS radio_stations_fts_insert;
+		DROP TRIGGER IF EXISTS radio_stations_fts_update;
+		DROP TRIGGER IF EXISTS radio_stations_fts_delete;
+		DROP TABLE IF EXISTS radio_stations_fts;
+
+		-- Recreate FTS5 virtual table for radio station search
+		CREATE VIRTUAL TABLE radio_stations_fts USING fts5(
+			name,
+			description,
+			genre_name,
+			tokenize='unicode61 remove_diacritics 2'
+		);
+
+		-- Triggers to keep FTS5 table in sync
+		CREATE TRIGGER radio_stations_fts_insert AFTER INSERT ON radio_stations
+		BEGIN
+			INSERT INTO radio_stations_fts(rowid, name, description, genre_name)
+			SELECT
+				NEW.id,
+				NEW.name,
+				COALESCE(NEW.description, ''),
+				(SELECT name FROM genres WHERE id = NEW.genre_id)
+			;
+		END;
+
+		CREATE TRIGGER radio_stations_fts_update AFTER UPDATE ON radio_stations
+		BEGIN
+			UPDATE radio_stations_fts
+			SET name = NEW.name,
+				description = COALESCE(NEW.description, ''),
+				genre_name = (SELECT name FROM genres WHERE id = NEW.genre_id)
+			WHERE rowid = NEW.id;
+		END;
+
+		CREATE TRIGGER radio_stations_fts_delete AFTER DELETE ON radio_stations
+		BEGIN
+			DELETE FROM radio_stations_fts WHERE rowid = OLD.id;
+		END;
+
+		-- Repopulate FTS5 table with all existing data
+		INSERT INTO radio_stations_fts(rowid, name, description, genre_name)
+		SELECT
+			rs.id,
+			rs.name,
+			COALESCE(rs.description, ''),
+			g.name
+		FROM radio_stations rs
+		JOIN genres g ON g.id = rs.genre_id;
+
+		-- Update schema version
+		INSERT INTO schema_migrations (version, description) VALUES (6, 'Rebuild and repopulate FTS index for radio stations');
+		`,
+		Down: `
+		-- Drop new FTS table and triggers
+		DROP TRIGGER IF EXISTS radio_stations_fts_insert;
+		DROP TRIGGER IF EXISTS radio_stations_fts_update;
+		DROP TRIGGER IF EXISTS radio_stations_fts_delete;
+		DROP TABLE IF EXISTS radio_stations_fts;
+
+		-- Recreate old FTS5 structure (from migration 4)
+		CREATE VIRTUAL TABLE radio_stations_fts USING fts5(
+			name,
+			description,
+			genre_name,
+			tokenize='unicode61 remove_diacritics 2'
+		);
+
+		-- Recreate old triggers
+		CREATE TRIGGER radio_stations_fts_insert AFTER INSERT ON radio_stations
+		BEGIN
+			INSERT INTO radio_stations_fts(rowid, name, description, genre_name)
+			SELECT
+				NEW.id,
+				NEW.name,
+				COALESCE(NEW.description, ''),
+				COALESCE(g.name, 'Unknown')
+			FROM (SELECT 1) AS dummy
+			LEFT JOIN genres g ON g.id = NEW.genre_id;
+		END;
+
+		DELETE FROM schema_migrations WHERE version = 6;
 		`,
 	},
 }
