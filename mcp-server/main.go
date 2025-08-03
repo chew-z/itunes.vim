@@ -140,6 +140,39 @@ func main() {
 		),
 	)
 
+	// Create EQ check tool
+	checkEQTool := mcp.NewTool("check_eq",
+		mcp.WithDescription("Check the current Apple Music Equalizer (EQ) status, including the active preset and a list of all available presets."),
+	)
+
+	// Create EQ set tool
+	setEQTool := mcp.NewTool("set_eq",
+		mcp.WithDescription("Set the Apple Music Equalizer (EQ). Can be used to enable/disable the EQ or apply a specific preset."),
+		mcp.WithString("preset",
+			mcp.Description("The name of the EQ preset to apply (e.g., \"Rock\", \"Jazz\"). Applying a preset will automatically enable the EQ."),
+		),
+		mcp.WithBoolean("enabled",
+			mcp.Description("Set to true to enable the EQ or false to disable it."),
+		),
+	)
+
+	// Create AirPlay tools
+	getOutputDeviceTool := mcp.NewTool("get_output_device",
+		mcp.WithDescription("Gets the current audio output device (e.g., local speakers or an AirPlay device)."),
+	)
+
+	listOutputDevicesTool := mcp.NewTool("list_output_devices",
+		mcp.WithDescription("Lists all available audio output devices, including local speakers and AirPlay devices."),
+	)
+
+	setOutputDeviceTool := mcp.NewTool("set_output_device",
+		mcp.WithDescription("Sets the audio output to a specific device."),
+		mcp.WithString("device_name",
+			mcp.Required(),
+			mcp.Description("The name of the device to set as the output."),
+		),
+	)
+
 	// Add tools to server
 	mcpServer.AddTool(searchTool, searchHandler)
 	mcpServer.AddTool(playTool, playHandler)
@@ -150,6 +183,11 @@ func main() {
 	mcpServer.AddTool(searchAdvancedTool, searchAdvancedHandler)
 	mcpServer.AddTool(playStreamTool, playStreamHandler)
 	mcpServer.AddTool(searchStationsTool, searchStationsHandler)
+	mcpServer.AddTool(checkEQTool, checkEqHandler)
+	mcpServer.AddTool(setEQTool, setEqHandler)
+	mcpServer.AddTool(getOutputDeviceTool, getOutputDeviceHandler)
+	mcpServer.AddTool(listOutputDevicesTool, listOutputDevicesHandler)
+	mcpServer.AddTool(setOutputDeviceTool, setOutputDeviceHandler)
 
 	// Add MCP resources for database statistics
 	dbStatsResource := mcp.NewResource(
@@ -554,4 +592,92 @@ func playlistsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]m
 			Text:     string(playlistsJSON),
 		},
 	}, nil
+}
+
+func checkEqHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	status, err := itunes.GetEQStatus()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get EQ status: %v", err)), nil
+	}
+
+	resultJSON, err := json.MarshalIndent(status, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal EQ status: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(resultJSON)), nil
+}
+
+func setEqHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	preset := request.GetString("preset", "")
+
+	var enabled *bool
+	args := request.GetArguments()
+	if _, hasEnabled := args["enabled"]; hasEnabled {
+		val := request.GetBool("enabled", false)
+		enabled = &val
+	}
+
+	if preset == "" && enabled == nil {
+		return mcp.NewToolResultError("At least one parameter (preset or enabled) must be provided."), nil
+	}
+
+	status, err := itunes.SetEQStatus(preset, enabled)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to set EQ status: %v", err)), nil
+	}
+
+	resultJSON, err := json.MarshalIndent(status, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal new EQ status: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(resultJSON)), nil
+}
+
+func getOutputDeviceHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	output, err := itunes.GetAudioOutput()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get audio output: %v", err)), nil
+	}
+
+	resultJSON, err := json.MarshalIndent(output, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal audio output: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(resultJSON)), nil
+}
+
+func listOutputDevicesHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	devices, err := itunes.ListAirPlayDevices()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to list AirPlay devices: %v", err)), nil
+	}
+
+	resultJSON, err := json.MarshalIndent(devices, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal AirPlay devices: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(resultJSON)), nil
+}
+
+func setOutputDeviceHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	deviceName, err := request.RequireString("device_name")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid device_name parameter: %v", err)), nil
+	}
+
+	device, err := itunes.SetAirPlayDevice(deviceName)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to set AirPlay device: %v", err)), nil
+	}
+
+	resultJSON, err := json.MarshalIndent(device, "", "  ")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to marshal device info: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(string(resultJSON)), nil
 }

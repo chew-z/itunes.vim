@@ -143,9 +143,36 @@ The system now uses SQLite as the primary and only storage backend, with Apple M
 - **Database size**: ~760 bytes per track including indexes
 - **Dependencies**: Only `modernc.org/sqlite` (pure Go SQLite driver)
 
-## MCP Tools (9 Available)
+## MCP Tools (14 Available)
 
-The iTunes MCP server provides 9 tools for comprehensive iTunes/Apple Music integration:
+The iTunes MCP server provides 14 tools for comprehensive iTunes/Apple Music integration:
+
+### `get_output_device`
+- **Description**: Gets the current audio output device (e.g., local speakers or an AirPlay device).
+- **Parameters**: None.
+- **Returns**: JSON object with `output_type` ("local" or "airplay") and `device_name`.
+
+### `list_output_devices`
+- **Description**: Lists all available audio output devices, including local speakers and AirPlay devices.
+- **Parameters**: None.
+- **Returns**: JSON array of device objects with `name`, `kind`, `selected` status, and `sound_volume`.
+
+### `set_output_device`
+- **Description**: Sets the audio output to a specific device.
+- **Parameters**: `device_name` (string, required) - The name of the device to set as the output.
+- **Returns**: JSON object confirming the newly active device.
+
+### `check_eq`
+- **Description**: Check the current Apple Music Equalizer (EQ) status, including the active preset and a list of all available presets.
+- **Parameters**: None.
+- **Returns**: JSON object with `enabled` (boolean), `current_preset` (string or null), and `available_presets` (array of strings).
+
+### `set_eq`
+- **Description**: Set the Apple Music Equalizer (EQ). Can be used to enable/disable the EQ or apply a specific preset.
+- **Parameters**:
+  - `preset` (string, optional): The name of the EQ preset to apply (e.g., "Rock", "Jazz"). Applying a preset will automatically enable the EQ.
+  - `enabled` (boolean, optional): Set to `true` to enable the EQ or `false` to disable it.
+- **Returns**: JSON object confirming the new EQ status.
 
 ### `search_itunes`
 - **Description**: Search iTunes/Apple Music library for tracks using SQLite FTS5

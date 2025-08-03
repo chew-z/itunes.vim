@@ -141,6 +141,197 @@ type PlayResult struct {
 	NowPlaying *NowPlayingStatus `json:"now_playing,omitempty"`
 }
 
+// EQStatus represents the state of the Apple Music Equalizer.
+type EQStatus struct {
+	Enabled          bool     `json:"enabled"`
+	CurrentPreset    *string  `json:"current_preset"` // Use pointer to handle null when disabled
+	AvailablePresets []string `json:"available_presets"`
+}
+
+// AudioOutput describes the current audio output device.
+type AudioOutput struct {
+	OutputType string `json:"output_type"` // "local" or "airplay"
+	DeviceName string `json:"device_name"`
+	Error      string `json:"error,omitempty"`
+}
+
+// AirPlayDevice represents an AirPlay-capable audio output device.
+type AirPlayDevice struct {
+	Name        string `json:"name"`
+	Kind        string `json:"kind"`
+	Selected    bool   `json:"selected"`
+	SoundVolume int    `json:"sound_volume"`
+	Error       string `json:"error,omitempty"`
+}
+
+// runScript executes a JXA script and returns its standard output.
+func runScript(ctx context.Context, scriptContent string, args []string) ([]byte, error) {
+	tempFile, err := os.CreateTemp("", "itunes_*.js")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+
+	if _, err := tempFile.WriteString(scriptContent); err != nil {
+		tempFile.Close()
+		return nil, fmt.Errorf("failed to write script to temp file: %w", err)
+	}
+	tempFile.Close()
+
+	cmdArgs := []string{"-l", "JavaScript", tempFile.Name()}
+	if len(args) > 0 {
+		cmdArgs = append(cmdArgs, args...)
+	}
+
+	cmd := exec.CommandContext(ctx, "osascript", cmdArgs...)
+
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("%w: %s", ErrScriptFailed, stderr.String())
+	}
+
+	return stdout.Bytes(), nil
+}
+
+// GetEQStatus retrieves the current equalizer status from Apple Music.
+func GetEQStatus() (*EQStatus, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	output, err := runScript(ctx, getEQScript, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute get EQ script: %w", err)
+	}
+
+	var status EQStatus
+	if err := json.Unmarshal(output, &status); err != nil {
+		return nil, fmt.Errorf("failed to parse EQ status from script output: %w", err)
+	}
+
+	return &status, nil
+}
+
+// GetAudioOutput retrieves the current audio output device information.
+func GetAudioOutput() (*AudioOutput, error) {
+    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+    defer cancel()
+
+    output, err := runScript(ctx, getAudioOutputScript, nil)
+    if err != nil {
+        return nil, fmt.Errorf("failed to execute get audio output script: %w", err)
+    }
+
+    var audioOutput AudioOutput
+    if err := json.Unmarshal(output, &audioOutput); err != nil {
+        return nil, fmt.Errorf("failed to parse audio output from script: %w", err)
+    }
+
+    if audioOutput.Error != "" {
+        return nil, fmt.Errorf("script error while getting audio output: %s", audioOutput.Error)
+    }
+
+    return &audioOutput, nil
+}
+
+// SetEQStatus sets the equalizer state in Apple Music.
+// It can enable/disable the EQ and/or set a specific preset.
+func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
+	// First, check if audio is being routed through AirPlay.
+	audioOutput, err := GetAudioOutput()
+	if err != nil {
+		return nil, fmt.Errorf("could not determine audio output device: %w", err)
+	}
+
+	if audioOutput.OutputType == "airplay" {
+		return nil, fmt.Errorf("EQ settings cannot be changed while playing to an AirPlay device ('%s')", audioOutput.DeviceName)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var args []string
+	if enabled != nil {
+		args = append(args, "--enabled", strconv.FormatBool(*enabled))
+	}
+	if preset != "" {
+		args = append(args, "--preset", preset)
+	}
+
+	output, err := runScript(ctx, setEQScript, args)
+	if err != nil {
+        if strings.Contains(err.Error(), "execution error") {
+             return nil, fmt.Errorf("failed to set EQ: JXA script execution failed. This can happen if music is playing to an external device or if Apple Music is not in a state to accept EQ changes")
+        }
+		return nil, fmt.Errorf("failed to execute set EQ script: %w", err)
+	}
+
+	var status EQStatus
+	if err := json.Unmarshal(output, &status); err != nil {
+		// Check for a script-level error response
+		var scriptError struct {
+			Error      string `json:"error"`
+			PresetName string `json:"preset_name"`
+		}
+		if json.Unmarshal(output, &scriptError) == nil && scriptError.Error != "" {
+			return nil, fmt.Errorf("script error: %s '%s'", scriptError.Error, scriptError.PresetName)
+		}
+		return nil, fmt.Errorf("failed to parse EQ status from script output: %w", err)
+	}
+
+	return &status, nil
+}
+
+
+// ListAirPlayDevices retrieves a list of all available AirPlay devices.
+func ListAirPlayDevices() ([]AirPlayDevice, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	output, err := runScript(ctx, listAirPlayDevicesScript, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute list AirPlay devices script: %w", err)
+	}
+
+	var devices []AirPlayDevice
+	if err := json.Unmarshal(output, &devices); err != nil {
+		// Check for a script-level error response
+		var scriptError struct {
+			Error string `json:"error"`
+		}
+		if json.Unmarshal(output, &scriptError) == nil && scriptError.Error != "" {
+			return nil, fmt.Errorf("script error: %s", scriptError.Error)
+		}
+		return nil, fmt.Errorf("failed to parse AirPlay devices from script output: %w", err)
+	}
+
+	return devices, nil
+}
+
+// SetAirPlayDevice sets the active AirPlay device.
+func SetAirPlayDevice(deviceName string) (*AirPlayDevice, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	output, err := runScript(ctx, setAirPlayDeviceScript, []string{deviceName})
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute set AirPlay device script: %w", err)
+	}
+
+	var device AirPlayDevice
+	if err := json.Unmarshal(output, &device); err != nil {
+		return nil, fmt.Errorf("failed to parse AirPlay device from script output: %w", err)
+	}
+
+	if device.Error != "" {
+		return nil, fmt.Errorf("script error: %s", device.Error)
+	}
+
+	return &device, nil
+}
+
 // PlayPlaylistTrack runs the embedded iTunes_Play_Playlist_Track.js script to play a playlist, album, or track.
 // If trackName is "", only the playlist/album will play. If trackID is provided, it takes priority over trackName.
 // Either playlistName or albumName can be provided for context, but not both.
