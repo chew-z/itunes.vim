@@ -151,16 +151,19 @@ The iTunes MCP server provides 14 tools for comprehensive iTunes/Apple Music int
 - **Description**: Gets the current audio output device (e.g., local speakers or an AirPlay device).
 - **Parameters**: None.
 - **Returns**: JSON object with `output_type` ("local" or "airplay") and `device_name`.
+- **Note**: When AirPlay is active, returns generic "airplay" status without specific device details due to system restrictions.
 
 ### `list_output_devices`
-- **Description**: Lists all available audio output devices, including local speakers and AirPlay devices.
+- **Description**: Lists available audio output devices. Due to macOS security restrictions, AirPlay device enumeration is limited.
 - **Parameters**: None.
-- **Returns**: JSON array of device objects with `name`, `kind`, `selected` status, and `sound_volume`.
+- **Returns**: JSON array with local device and AirPlay status indicator. Shows local computer and generic "AirPlay Device" entry when AirPlay is active.
+- **Limitations**: Cannot enumerate specific AirPlay devices due to system privilege restrictions.
 
 ### `set_output_device`
-- **Description**: Sets the audio output to a specific device.
-- **Parameters**: `device_name` (string, required) - The name of the device to set as the output.
-- **Returns**: JSON object confirming the newly active device.
+- **Description**: Switches audio output between local speakers and AirPlay. Due to system restrictions, cannot select specific AirPlay devices.
+- **Parameters**: `device_name` (string, required) - Use "local", "computer", or the computer's name to switch to local output.
+- **Returns**: JSON object confirming the switch to local output or an error message explaining the limitation.
+- **Limitations**: Can only switch to local output by disabling AirPlay. Selecting specific AirPlay devices must be done manually in the Music app.
 
 ### `check_eq`
 - **Description**: Check the current Apple Music Equalizer (EQ) status, including the active preset and a list of all available presets.
@@ -322,7 +325,7 @@ The iTunes MCP server provides 14 tools for comprehensive iTunes/Apple Music int
 
 **Technical Details**:
 - **Complete Refresh**: Rebuilds entire database from current Apple Music state (not incremental)
-- **Atomic Operation**: All changes in single transaction with rollback on failure  
+- **Atomic Operation**: All changes in single transaction with rollback on failure
 - **Batch Processing**: Tracks processed in chunks of 100 for memory efficiency
 - **Persistent ID Integration**: Apple Music's stable identifiers ensure reliable track identification
 - **Streaming Track Support**: Detects and handles Internet audio streams with appropriate metadata
@@ -420,7 +423,7 @@ All playback operations work identically for streaming and local tracks using pe
 
 **Root Cause**: Apple Music requires the `itmss://` protocol for internal station playback, while `https://` URLs are only for web browser access.
 
-**Solution**: 
+**Solution**:
 - **Playback URLs**: Use `itmss://music.apple.com/station/...?app=music` format for reliable Apple Music integration
 - **Homepage URLs**: Use `https://music.apple.com/station/...` format for web browser access
 - **Database Migration v4**: Automatically converted existing URLs to proper formats
@@ -446,16 +449,16 @@ All playback operations work identically for streaming and local tracks using pe
 **Result**: All Apple Music radio stations now play correctly with proper track metadata display.
 
 **Commit References:**
-- [00005b7](../../commit/00005b7) - feat(radio-stations): implement database-backed radio station management  
+- [00005b7](../../commit/00005b7) - feat(radio-stations): implement database-backed radio station management
 - [9e29ac0](../../commit/9e29ac0) - feat(itunes): broaden play_stream URL support
 - [b945172](../../commit/b945172) - feat(itunes): add tools to search and play radio stations
 
-### 2. Database Schema Migration v4 (2025-07-28)  
+### 2. Database Schema Migration v4 (2025-07-28)
 **Major Schema Cleanup**: Simplified radio stations database structure and fixed URL handling.
 
 **Key Changes:**
 - **Removed Superficial Fields**: Eliminated `country`, `language`, and `quality` fields as they were unnecessary for Apple Music stations
-- **Dual URL System**: 
+- **Dual URL System**:
   - `url` field: `itmss://` protocol URLs for Apple Music playback
   - `homepage` field: `https://` web URLs for browser access
 - **Automatic Migration**: Existing data converted seamlessly with URL format correction
@@ -466,7 +469,7 @@ All playback operations work identically for streaming and local tracks using pe
 CREATE TABLE radio_stations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
-    url TEXT NOT NULL UNIQUE,        -- itmss:// for playback  
+    url TEXT NOT NULL UNIQUE,        -- itmss:// for playback
     description TEXT,
     genre_id INTEGER,
     homepage TEXT,                   -- https:// for web browsers

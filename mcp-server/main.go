@@ -61,17 +61,17 @@ func main() {
 
 	// Create refresh tool
 	refreshTool := mcp.NewTool("refresh_library",
-		mcp.WithDescription("Refreshes the iTunes library database by extracting current data from Apple Music app and populating SQLite database. Takes 1-3 minutes for large libraries. Use only when library has changed significantly."),
+		mcp.WithDescription("Refreshes the iTunes library database by extracting current data from Apple Music app and populating SQLite database. Takes 1-3 minutes for large libraries. Use only when library has changed significantly. Note: This tool takes no parameters, call with empty arguments {}."),
 	)
 
 	// Create now playing tool
 	nowPlayingTool := mcp.NewTool("now_playing",
-		mcp.WithDescription("Gets the current playback status and track information from Apple Music."),
+		mcp.WithDescription("Gets the current playback status and track information from Apple Music. Note: This tool takes no parameters, call with empty arguments {}."),
 	)
 
 	// Create list playlists tool
 	listPlaylistsTool := mcp.NewTool("list_playlists",
-		mcp.WithDescription("Lists all user playlists in the iTunes/Apple Music library with metadata."),
+		mcp.WithDescription("Lists all user playlists in the iTunes/Apple Music library with metadata. Note: This tool takes no parameters, call with empty arguments {}."),
 	)
 
 	// Create get playlist tracks tool
@@ -142,7 +142,7 @@ func main() {
 
 	// Create EQ check tool
 	checkEQTool := mcp.NewTool("check_eq",
-		mcp.WithDescription("Check the current Apple Music Equalizer (EQ) status, including the active preset and a list of all available presets."),
+		mcp.WithDescription("Check the current Apple Music Equalizer (EQ) status, including the active preset and a list of all available presets. Note: This tool takes no parameters, call with empty arguments {}."),
 	)
 
 	// Create EQ set tool
@@ -158,11 +158,11 @@ func main() {
 
 	// Create AirPlay tools
 	getOutputDeviceTool := mcp.NewTool("get_output_device",
-		mcp.WithDescription("Gets the current audio output device (e.g., local speakers or an AirPlay device)."),
+		mcp.WithDescription("Gets the current audio output device (e.g., local speakers or an AirPlay device). Note: This tool takes no parameters, call with empty arguments {}."),
 	)
 
 	listOutputDevicesTool := mcp.NewTool("list_output_devices",
-		mcp.WithDescription("Lists all available audio output devices, including local speakers and AirPlay devices."),
+		mcp.WithDescription("Lists all available audio output devices, including local speakers and AirPlay devices. Note: This tool takes no parameters, call with empty arguments {}."),
 	)
 
 	setOutputDeviceTool := mcp.NewTool("set_output_device",

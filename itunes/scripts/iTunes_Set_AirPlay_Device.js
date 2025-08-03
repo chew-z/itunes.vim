@@ -1,46 +1,61 @@
-
 function run(argv) {
-    const Music = Application("com.apple.Music");
+    const Music = Application('Music')
 
     if (argv.length !== 1) {
-        return JSON.stringify({ error: "A single device name argument is required." });
+        return JSON.stringify({ error: 'A single device name argument is required.' })
     }
-    const targetDeviceName = argv[0];
+
+    const targetDeviceName = argv[0]
 
     if (!Music.running()) {
-        return JSON.stringify({ error: "Music app is not running." });
+        return JSON.stringify({ error: 'Music app is not running.' })
     }
 
     try {
-        const devices = Music.airPlayDevices();
-        let targetDevice = null;
+        // Get the computer name for local output
+        const app = Application.currentApplication()
+        app.includeStandardAdditions = true
+        let computerName = 'Computer'
 
-        // First, find the target device
-        for (let i = 0; i < devices.length; i++) {
-            if (devices[i].name() === targetDeviceName) {
-                targetDevice = devices[i];
-                break;
+        try {
+            computerName = app.doShellScript('scutil --get ComputerName')
+        } catch (e) {
+            try {
+                computerName = app.doShellScript('hostname -s')
+            } catch (e2) {
+                // Use default
             }
         }
 
-        if (!targetDevice) {
-            return JSON.stringify({ error: `Device named '${targetDeviceName}' not found.` });
+        // If targeting local/computer, disable AirPlay
+        if (targetDeviceName === computerName || targetDeviceName.toLowerCase() === 'local' || targetDeviceName.toLowerCase() === 'computer') {
+            try {
+                // Disable AirPlay to switch to local output
+                Music.airPlayEnabled = false
+
+                return JSON.stringify({
+                    name: computerName,
+                    kind: 'computer',
+                    selected: true,
+                    sound_volume: Music.soundVolume(),
+                })
+            } catch (e) {
+                return JSON.stringify({
+                    error: `Failed to set local audio: ${e.toString()}`,
+                })
+            }
         }
 
-        // Deselect all other devices and select the target
-        for (let i = 0; i < devices.length; i++) {
-            devices[i].selected.set(devices[i].name() === targetDeviceName);
-        }
-
-        // Return the new active device
+        // For AirPlay devices, we can't directly enumerate or select them due to privilege restrictions
+        // We can only inform the user about this limitation
         return JSON.stringify({
-            name: targetDevice.name(),
-            kind: targetDevice.kind(),
-            selected: targetDevice.selected(),
-            sound_volume: targetDevice.soundVolume()
-        });
-
+            error: 'Setting specific AirPlay devices is not supported due to system restrictions',
+            message: 'You can only switch between local output and the currently connected AirPlay device',
+            hint: 'To switch to local output, use "local" or "' + computerName + '" as the device name',
+        })
     } catch (e) {
-        return JSON.stringify({ error: `An error occurred: ${e.message}` });
+        return JSON.stringify({
+            error: `An error occurred: ${e.toString()}`,
+        })
     }
 }

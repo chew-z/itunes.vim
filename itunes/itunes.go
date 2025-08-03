@@ -146,6 +146,7 @@ type EQStatus struct {
 	Enabled          bool     `json:"enabled"`
 	CurrentPreset    *string  `json:"current_preset"` // Use pointer to handle null when disabled
 	AvailablePresets []string `json:"available_presets"`
+	Message          string   `json:"message,omitempty"` // Optional informational message
 }
 
 // AudioOutput describes the current audio output device.
@@ -198,6 +199,16 @@ func runScript(ctx context.Context, scriptContent string, args []string) ([]byte
 
 // GetEQStatus retrieves the current equalizer status from Apple Music.
 func GetEQStatus() (*EQStatus, error) {
+	// First, check if audio is being routed through AirPlay.
+	audioOutput, err := GetAudioOutput()
+	if err != nil {
+		return nil, fmt.Errorf("could not determine audio output device: %w", err)
+	}
+
+	if audioOutput.OutputType == "airplay" {
+		return nil, fmt.Errorf("EQ status cannot be checked while playing to an AirPlay device ('%s')", audioOutput.DeviceName)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -216,24 +227,24 @@ func GetEQStatus() (*EQStatus, error) {
 
 // GetAudioOutput retrieves the current audio output device information.
 func GetAudioOutput() (*AudioOutput, error) {
-    ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-    defer cancel()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-    output, err := runScript(ctx, getAudioOutputScript, nil)
-    if err != nil {
-        return nil, fmt.Errorf("failed to execute get audio output script: %w", err)
-    }
+	output, err := runScript(ctx, getAudioOutputScript, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute get audio output script: %w", err)
+	}
 
-    var audioOutput AudioOutput
-    if err := json.Unmarshal(output, &audioOutput); err != nil {
-        return nil, fmt.Errorf("failed to parse audio output from script: %w", err)
-    }
+	var audioOutput AudioOutput
+	if err := json.Unmarshal(output, &audioOutput); err != nil {
+		return nil, fmt.Errorf("failed to parse audio output from script: %w", err)
+	}
 
-    if audioOutput.Error != "" {
-        return nil, fmt.Errorf("script error while getting audio output: %s", audioOutput.Error)
-    }
+	if audioOutput.Error != "" {
+		return nil, fmt.Errorf("script error while getting audio output: %s", audioOutput.Error)
+	}
 
-    return &audioOutput, nil
+	return &audioOutput, nil
 }
 
 // SetEQStatus sets the equalizer state in Apple Music.
@@ -246,7 +257,26 @@ func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
 	}
 
 	if audioOutput.OutputType == "airplay" {
-		return nil, fmt.Errorf("EQ settings cannot be changed while playing to an AirPlay device ('%s')", audioOutput.DeviceName)
+		// Get current EQ status instead of returning an error
+		currentStatus, err := GetEQStatus()
+		if err != nil {
+			return nil, fmt.Errorf("could not retrieve current EQ status while using AirPlay device '%s': %w", audioOutput.DeviceName, err)
+		}
+
+		// Return current status with informative message about AirPlay limitation
+		return &EQStatus{
+			Enabled:          currentStatus.Enabled,
+			CurrentPreset:    currentStatus.CurrentPreset,
+			AvailablePresets: currentStatus.AvailablePresets,
+			Message: fmt.Sprintf("EQ settings cannot be changed while using AirPlay device '%s'. Current EQ status: %s", audioOutput.DeviceName, func() string {
+				if currentStatus.Enabled && currentStatus.CurrentPreset != nil && *currentStatus.CurrentPreset != "" {
+					return fmt.Sprintf("enabled with '%s' preset", *currentStatus.CurrentPreset)
+				} else if currentStatus.Enabled {
+					return "enabled with no preset"
+				}
+				return "disabled"
+			}()),
+		}, nil
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -262,9 +292,9 @@ func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
 
 	output, err := runScript(ctx, setEQScript, args)
 	if err != nil {
-        if strings.Contains(err.Error(), "execution error") {
-             return nil, fmt.Errorf("failed to set EQ: JXA script execution failed. This can happen if music is playing to an external device or if Apple Music is not in a state to accept EQ changes")
-        }
+		if strings.Contains(err.Error(), "execution error") {
+			return nil, fmt.Errorf("failed to set EQ: JXA script execution failed. This can happen if music is playing to an external device or if Apple Music is not in a state to accept EQ changes")
+		}
 		return nil, fmt.Errorf("failed to execute set EQ script: %w", err)
 	}
 
@@ -283,7 +313,6 @@ func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
 
 	return &status, nil
 }
-
 
 // ListAirPlayDevices retrieves a list of all available AirPlay devices.
 func ListAirPlayDevices() ([]AirPlayDevice, error) {
