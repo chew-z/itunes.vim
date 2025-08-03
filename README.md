@@ -13,12 +13,13 @@ A comprehensive Go-based tool that bridges command-line interfaces and AI applic
 
 ### Key Features
 
-- **Ultra-Fast Search**: SQLite FTS5 database with <7ms query performance  
+- **Ultra-Fast Search**: SQLite FTS5 database with <7ms query performance
 - **Smart Playback**: ID-based track lookup with playlist context support
-- **MCP Integration**: 7 specialized tools for AI/LLM applications
+- **Audio Control**: EQ presets and output device management (local/AirPlay)
+- **MCP Integration**: 14 specialized tools for AI/LLM applications
 - **Database-First**: Normalized SQLite schema with persistent Apple Music IDs
 - **Real-Time Sync**: JXA automation bridge for live Apple Music control
-- **Reliable**: Handles complex track names and encoding issues gracefully
+- **Radio Stations**: 25+ Apple Music stations with database search
 
 ## Project History
 
@@ -102,56 +103,28 @@ After building, binaries are available in the `bin/` directory:
 # Start MCP server (stdio transport)
 ./bin/mcp-itunes
 
-# The server provides 7 tools for AI integration:
-# - search_itunes
-# - play_track  
-# - now_playing
-# - refresh_library
-# - list_playlists
-# - get_playlist_tracks
+# The server provides 14 tools including:
+# - search_itunes, play_track, now_playing
+# - check_eq, set_eq (EQ control)
+# - get_output_device, set_output_device (audio output)
+# - search_stations, play_stream (radio stations)
+# - refresh_library, list_playlists, get_playlist_tracks
 # - search_advanced
 ```
 
-### First-Time Setup & Database Refresh
+### Database Setup
 
 ```bash
-# Initialize and populate database (first run or when library changes)
+# First-time setup or library refresh (1-3 minutes)
 ./bin/itunes-migrate -from-script
-
-# Or migrate from existing JSON cache
-./bin/itunes-migrate -cache-dir ~/Music/iTunes/cache
-```
-
-#### When to Refresh Your Database
-
-Your iTunes/Apple Music database should be refreshed when:
-- **First installation** - Initial database population
-- **Library changes** - After adding/removing songs or playlists  
-- **Metadata updates** - After editing track information or ratings
-- **Search issues** - When search results seem outdated or incomplete
-
-#### Refresh Process (1-3 minutes)
-
-The refresh process completely rebuilds your music database:
-
-1. **Extracts all tracks and playlists** from Apple Music app using embedded JavaScript
-2. **Creates normalized SQLite database** with persistent Apple Music IDs
-3. **Builds FTS5 search index** for ultra-fast search performance (<7ms)
-4. **Validates data integrity** and reports statistics
-
-**Via MCP Server:**
-```bash
-# Use the refresh_library tool (requires user approval due to time cost)
-```
-
-**Via CLI:**
-```bash
-# Direct refresh with progress reporting
-./bin/itunes-migrate -from-script -verbose
 
 # Validate existing database
 ./bin/itunes-migrate -validate
 ```
+
+**When to refresh**: First install, library changes, metadata updates, or search issues.
+
+**Process**: Apple Music → JXA → SQLite with persistent IDs and FTS5 index.
 
 ## Usage Examples
 
@@ -184,22 +157,10 @@ ITUNES_DB_PATH=/custom/path/library.db ./bin/itunes search "classical"
 ./bin/itunes play "" "" "Take Five"
 ```
 
-### Database Management
-
-```bash
-# Refresh library from Apple Music
-./bin/itunes-migrate -from-script
-
-# Validate existing database
-./bin/itunes-migrate -validate
-
-# Verbose migration output
-./bin/itunes-migrate -from-script -verbose
-```
 
 ## MCP Integration
 
-The MCP server provides 7 specialized tools for AI applications:
+The MCP server provides 14 specialized tools for AI applications:
 
 ### Suggested System Prompt for LLM Integration
 
@@ -231,80 +192,38 @@ Please act as DJ and curator of my Music library. You have access to the followi
 Act as an intelligent music curator who understands the user's taste, suggests appropriate tracks/playlists, and creates seamless listening experiences.
 ```
 
-### Available Tools
+### Core Tools
 
-### 1. `search_itunes`
-Search your music library with SQLite FTS5 performance.
+**Music Library:**
+- `search_itunes` - Search library (<7ms FTS5 performance)
+- `search_advanced` - Advanced search with filters (genre, rating, starred)
+- `play_track` - Play with ID-based lookup and playlist context
+- `now_playing` - Current playback status and track info
 
-**Parameters:**
-- `query` (string, required): Search query for tracks, artists, or albums
+**Audio Control (New):**
+- `check_eq` - Get current EQ status and available presets
+- `set_eq` - Apply EQ presets (Rock, Jazz, Classical, etc.) or enable/disable
+- `get_output_device` - Check current audio output (local/AirPlay)
+- `set_output_device` - Switch to local output (AirPlay selection manual)
 
-**Returns:** JSON array of matching tracks with metadata
+**Radio Stations:**
+- `search_stations` - Find Apple Music radio stations by genre/name
+- `play_stream` - Play streaming URLs (itmss://, https://)
 
-### 2. `play_track`
-Play tracks with optional playlist context for continuous playback.
+**Playlists & Library:**
+- `list_playlists` - All playlists with metadata
+- `get_playlist_tracks` - Tracks in specific playlist
+- `refresh_library` - Rebuild database from Apple Music (1-3 min)
 
-**Parameters:**
-- `track_id` (string, optional): **Recommended** - Use exact `id` from search results
-- `playlist` (string, optional): For continuous playback within playlist
-- `album` (string, optional): For track location assistance  
-- `track` (string, optional): Fallback track name matching
+**Stream Integration:**
+- `play_stream` - Play any streaming URL (Apple Music stations, web streams)
 
-**Returns:** Enhanced JSON with playback result and current track info
+## Performance
 
-### 3. `now_playing`
-Get current playback status and track information.
-
-**Returns:** JSON with track details, playback position, and player status
-
-### 4. `refresh_library`
-Refresh the library database from Apple Music (resource-intensive).
-
-**Returns:** Database population statistics and refresh status
-
-### 5. `list_playlists`  
-List all user playlists with metadata.
-
-**Returns:** JSON array of playlists with track counts and genres
-
-### 6. `get_playlist_tracks`
-Get all tracks in a specific playlist.
-
-**Parameters:**
-- `playlist` (string, required): Playlist name or persistent ID
-- `use_id` (boolean, optional): Set true if using persistent ID
-
-### 7. `search_advanced`
-Advanced search with filters for genre, artist, rating, etc.
-
-**Parameters:**
-- `query` (string, required): Search query
-- `genre`, `artist`, `album`, `playlist` (optional): Filter criteria
-- `min_rating` (number, optional): Minimum rating (0-100)
-- `starred` (boolean, optional): Filter by starred/loved tracks
-- `limit` (number, optional): Results limit (default: 15)
-
-## Performance Characteristics
-
-### Search Performance
-- **Average query time**: <7ms (target <10ms achieved)
-- **Cached searches**: <5µs for repeated queries
-- **Database size**: ~760 bytes per track including indexes
-- **Insert performance**: ~800 tracks/second during migration
-
-### System Requirements
-- **Memory**: ~64MB cache for optimal performance
-- **Storage**: ~1MB per 1,000 tracks (including FTS5 indexes)
-- **Dependencies**: Pure Go SQLite driver (no CGO required)
-
-### Benchmarks
-```
-Search Operations (9,000+ track library):
-- Simple queries:    3-5ms
-- Complex queries:   5-7ms
-- FTS5 phrase search: 6-8ms
-- Cache hits:        <5µs
-```
+- **Search**: <7ms queries, <5µs cache hits
+- **Database**: ~760 bytes per track, ~800 tracks/sec migration
+- **Memory**: ~64MB cache, pure Go SQLite (no CGO)
+- **Storage**: ~1MB per 1,000 tracks including FTS5 indexes
 
 ## Environment Variables
 
@@ -316,7 +235,7 @@ Search Operations (9,000+ track library):
 
 ## Development
 
-### Build Commands
+### Build & Test
 
 ```bash
 # Build all binaries
@@ -324,134 +243,59 @@ go build -o bin/itunes itunes.go
 go build -o bin/mcp-itunes ./mcp-server
 go build -o bin/itunes-migrate ./cmd/migrate
 
-# Run tests
-go test ./...                    # All tests
-go test ./database -v           # Database tests
-go test ./database -bench=.     # Performance benchmarks
-
-# Database validation
-go run database_validate.go
+# Test & validate
+go test ./...                           # All tests
+go test ./database -bench=BenchmarkSearch  # Performance
+go run ./mcp-server                     # MCP server test
+./bin/itunes search "jazz"              # CLI test
 ```
 
-### Testing
-
-```bash
-# Run CLI tests
-go run itunes.go search "jazz"
-go run itunes.go now-playing
-
-# Test MCP server startup  
-go run ./mcp-server
-
-# Database performance testing
-go test ./database -bench=BenchmarkSearch
-```
-
-### Code Structure
+### Project Structure
 
 ```
-├── itunes.go              # Main CLI application
-├── mcp-server/            # MCP server implementation
-├── itunes/                # Core iTunes integration library
-│   ├── itunes.go         # Main iTunes functions
-│   └── scripts/          # JXA automation scripts
-├── database/              # SQLite database layer
-│   ├── database.go       # Core database operations
-│   ├── search.go         # FTS5 search implementation
-│   ├── migrate.go        # Migration utilities
-│   └── schema.go         # Database schema
-└── cmd/migrate/           # Migration tool
+├── itunes.go              # CLI application
+├── mcp-server/            # MCP server (14 tools)
+├── itunes/                # Core library + JXA scripts
+├── database/              # SQLite + FTS5 search
+└── cmd/migrate/           # Database migration tool
 ```
 
 ## Troubleshooting
 
-### Common Issues
-
-**Database Not Found**
+**Database Issues:**
 ```bash
-# Initialize database
-./bin/itunes-migrate -from-script
+./bin/itunes-migrate -from-script    # Initialize/refresh
+./bin/itunes-migrate -validate       # Check status
 ```
 
-**Search Returns No Results**
-```bash
-# Check database status
-./bin/itunes-migrate -validate
+**Playback Issues:**
+- Use `track_id` from search results (most reliable)
+- Ensure Apple Music app is running
+- Grant AppleScript permissions: System Preferences → Security & Privacy → Automation
 
-# Refresh library
-./bin/itunes-migrate -from-script -verbose
-```
-
-**Playback Fails**
-- Use `track_id` from search results instead of track names
-- Ensure Apple Music app is running and accessible
-- Check AppleScript permissions in System Preferences
-
-**Migration Errors**
-```bash
-# Validate existing data
-./bin/itunes-migrate -validate
-
-# Force fresh migration
-rm ~/Music/iTunes/itunes_library.db
-./bin/itunes-migrate -from-script
-```
-
-### AppleScript Permissions
-
-Grant Terminal/iTerm access to:
-- **System Preferences → Security & Privacy → Privacy → Automation**
-- Enable access to "Music" for your terminal application
-
-### Performance Issues
-
-```bash
-# Check database statistics
-./bin/itunes-migrate -validate
-
-# Rebuild FTS5 index
-./bin/itunes-migrate -from-script
-```
+**EQ/Audio Issues:**
+- EQ unavailable during AirPlay (macOS limitation)
+- AirPlay device selection must be done manually in Music app
 
 ## Contributing
 
-### Development Setup
+1. Fork and clone the repository
+2. Install Go 1.24.4+ 
+3. Build and test the project
+4. Follow Go conventions and run `golangci-lint`
+5. Add tests for new functionality
 
-1. **Fork and clone** the repository
-2. **Install Go 1.24.4+** and ensure it's in your PATH
-3. **Build the project** using the commands above
-4. **Run tests** to ensure everything works
-5. **Follow Go conventions** for code style and structure
-
-### Code Style
-
-- Follow standard Go conventions
-- Use `golangci-lint` for linting  
-- Run `go fmt` before committing
-- Add tests for new functionality
-- Update documentation for API changes
-
-### Testing
+### Testing & Quality
 
 ```bash
-# Linting and formatting
-./run_lint.sh        # If available
-./run_format.sh      # If available  
-./run_test.sh        # If available
-
-# Manual testing
-golangci-lint run
-go fmt ./...
-go test ./...
+# Code quality
+golangci-lint run    # Linting
+go fmt ./...         # Formatting
+go test ./...        # All tests
 ```
 
-## License
+## License & Acknowledgments
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+**MIT License** - See LICENSE file for details.
 
-## Acknowledgments
-
-- **Apple Music** for the rich metadata and JXA automation capabilities
-- **SQLite FTS5** for exceptional full-text search performance  
-- **MCP Protocol** for seamless AI/LLM integration standards
-- **modernc.org/sqlite** for the pure Go SQLite implementation
+Thanks to Apple Music, SQLite FTS5, MCP Protocol, and modernc.org/sqlite.
