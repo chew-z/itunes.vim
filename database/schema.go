@@ -7,7 +7,7 @@ import (
 )
 
 // SchemaVersion represents the current database schema version
-const SchemaVersion = 4
+const SchemaVersion = 6
 
 // Migration represents a database migration
 type Migration struct {
@@ -225,17 +225,17 @@ var Schema = []Migration{
 		-- Remove streaming columns and indexes
 		DROP INDEX IF EXISTS idx_tracks_kind;
 		DROP INDEX IF EXISTS idx_tracks_streaming;
-		
+
 		-- Note: SQLite doesn't support DROP COLUMN, so we'd need to recreate the table
 		-- This is a simplified down migration that warns about data loss
-		CREATE TABLE tracks_backup AS SELECT 
+		CREATE TABLE tracks_backup AS SELECT
 			id, persistent_id, name, artist_id, album_id, genre_id, collection,
-			rating, starred, ranking, duration, play_count, last_played, 
+			rating, starred, ranking, duration, play_count, last_played,
 			date_added, created_at, updated_at
 		FROM tracks;
-		
+
 		DROP TABLE tracks;
-		
+
 		CREATE TABLE tracks (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			persistent_id TEXT NOT NULL UNIQUE,
@@ -257,10 +257,10 @@ var Schema = []Migration{
 			FOREIGN KEY (album_id) REFERENCES albums(id),
 			FOREIGN KEY (genre_id) REFERENCES genres(id)
 		);
-		
+
 		INSERT INTO tracks SELECT * FROM tracks_backup;
 		DROP TABLE tracks_backup;
-		
+
 		-- Recreate original indexes
 		CREATE INDEX IF NOT EXISTS idx_tracks_persistent_id ON tracks(persistent_id);
 		CREATE INDEX IF NOT EXISTS idx_tracks_artist_id ON tracks(artist_id);
@@ -271,7 +271,7 @@ var Schema = []Migration{
 		CREATE INDEX IF NOT EXISTS idx_tracks_rating ON tracks(rating);
 		CREATE INDEX IF NOT EXISTS idx_tracks_ranking ON tracks(ranking DESC);
 		CREATE INDEX IF NOT EXISTS idx_tracks_date_added ON tracks(date_added);
-		
+
 		-- Remove migration record
 		DELETE FROM schema_migrations WHERE version = 2;
 		`,
@@ -389,14 +389,14 @@ var Schema = []Migration{
 
 		-- Copy data from old table, converting homepage URLs
 		INSERT INTO radio_stations_new (
-			id, name, url, description, genre_id, homepage, 
+			id, name, url, description, genre_id, homepage,
 			verified_at, is_active, created_at, updated_at
 		)
-		SELECT 
+		SELECT
 			id, name, url, description, genre_id,
 			-- Convert itmss:// homepage URLs back to https:// for web browser access
-			CASE 
-				WHEN homepage LIKE 'itmss://music.apple.com%' THEN 
+			CASE
+				WHEN homepage LIKE 'itmss://music.apple.com%' THEN
 					REPLACE(REPLACE(homepage, 'itmss://', 'https://'), '?app=music', '')
 				ELSE homepage
 			END,
@@ -459,7 +459,7 @@ var Schema = []Migration{
 
 		-- Repopulate FTS5 table with existing data
 		INSERT INTO radio_stations_fts(rowid, name, description, genre_name)
-		SELECT 
+		SELECT
 			rs.id,
 			rs.name,
 			COALESCE(rs.description, ''),
@@ -491,16 +491,16 @@ var Schema = []Migration{
 
 		-- Copy data back with default values for removed fields
 		INSERT INTO radio_stations_old (
-			id, name, url, description, genre_id, 
+			id, name, url, description, genre_id,
 			country, language, quality, homepage,
 			verified_at, is_active, created_at, updated_at
 		)
-		SELECT 
+		SELECT
 			id, name, url, description, genre_id,
 			'US', 'English', '256k AAC',
-			-- Convert https:// homepage URLs back to itmss:// 
-			CASE 
-				WHEN homepage LIKE 'https://music.apple.com%' THEN 
+			-- Convert https:// homepage URLs back to itmss://
+			CASE
+				WHEN homepage LIKE 'https://music.apple.com%' THEN
 					REPLACE(homepage, 'https://', 'itmss://') || '?app=music'
 				ELSE homepage
 			END,
@@ -549,10 +549,10 @@ var Schema = []Migration{
 		);
 
 		INSERT INTO radio_stations_new (
-			id, name, url, description, genre_id, homepage, 
+			id, name, url, description, genre_id, homepage,
 			verified_at, is_active, created_at, updated_at
 		)
-		SELECT 
+		SELECT
 			id, name, url, description, genre_id, homepage,
 			verified_at, is_active, created_at, updated_at
 		FROM radio_stations;
@@ -591,10 +591,10 @@ var Schema = []Migration{
 		);
 
 		INSERT INTO radio_stations_old (
-			id, name, url, description, genre_id, homepage, 
+			id, name, url, description, genre_id, homepage,
 			verified_at, is_active, created_at, updated_at
 		)
-		SELECT 
+		SELECT
 			id, name, url, description, genre_id, homepage,
 			verified_at, is_active, created_at, updated_at
 		FROM radio_stations;

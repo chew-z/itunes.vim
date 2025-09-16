@@ -338,6 +338,7 @@ func (sm *SearchManager) SearchWithCache(query string, filters *SearchFilters) (
 
 // SearchTracksOptimized performs an optimized search with relevance scoring
 func (sm *SearchManager) SearchTracksOptimized(query string, filters *SearchFilters) ([]Track, error) {
+	start := time.Now()
 	builder := NewSearchQueryBuilder(query, filters)
 
 	// Try FTS first
@@ -346,15 +347,26 @@ func (sm *SearchManager) SearchTracksOptimized(query string, filters *SearchFilt
 		return nil, err
 	}
 
+	method := "fts"
 	tracks, err := sm.executeSearchQuery(sqlQuery, args)
 	if err != nil {
 		// Fallback to LIKE queries if FTS fails
+		method = "like"
 		sqlQuery, args, err = builder.WithFTS(false).Build()
 		if err != nil {
 			return nil, err
 		}
 		tracks, err = sm.executeSearchQuery(sqlQuery, args)
 	}
+
+	// Record metrics
+	sm.recordMetrics(SearchMetrics{
+		Query:       query,
+		Duration:    time.Since(start),
+		ResultCount: len(tracks),
+		CacheHit:    false,
+		Method:      method,
+	})
 
 	return tracks, err
 }

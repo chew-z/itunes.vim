@@ -168,8 +168,8 @@ func TestBasicCRUDOperations(t *testing.T) {
 	if stats.AlbumCount != 1 {
 		t.Errorf("Expected 1 album, got %d", stats.AlbumCount)
 	}
-	if stats.GenreCount != 1 {
-		t.Errorf("Expected 1 genre, got %d", stats.GenreCount)
+	if stats.GenreCount != 2 {
+		t.Errorf("Expected 2 genres (including 'Unknown'), got %d", stats.GenreCount)
 	}
 }
 

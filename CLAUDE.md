@@ -264,9 +264,14 @@ type Track struct {
 ## Architecture
 
 **Search**: SQLite FTS5 (<7ms), Apple Music persistent IDs
-**Playback**: JXA automation with ID-based lookup  
+**Playback**: JXA automation with ID-based lookup
 **Storage**: SQLite-only database (no cache files)
 **Error Handling**: JXA exit codes (1=no results, 2=script error)
 
 **Key Functions**: `SearchTracks()`, `PlayPlaylistTrackWithStatus()`, `RefreshLibraryCache()`, `GetTrackByPersistentID()`
 
+
+## Further instructions
+
+- @./GODOC.md
+- @./GOLANG.md
