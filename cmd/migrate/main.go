@@ -4,14 +4,16 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
+
 	"itunes/database"
 	"itunes/itunes"
+	"itunes/logging"
 )
 
 var (
@@ -28,6 +30,8 @@ var (
 	validate   = flag.Bool("validate", false, "Validate existing database")
 	fromScript = flag.Bool("from-script", false, "Run refresh script and populate database directly")
 )
+
+var logger *zap.Logger
 
 func main() {
 	flag.Usage = func() {
@@ -48,14 +52,22 @@ func main() {
 	flag.Parse()
 
 	// Configure logging
-	if !*verbose {
-		log.SetFlags(0)
+	logLevel := "info"
+	if *verbose {
+		logLevel = "debug"
 	}
+	var err error
+	logger, err = logging.InitLogger(logLevel)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer logger.Sync()
 
 	// Handle validation mode
 	if *validate {
 		if err := validateDatabase(); err != nil {
-			log.Fatalf("Validation failed: %v", err)
+			logger.Fatal("Validation failed", zap.Error(err))
 		}
 		return
 	}
@@ -63,11 +75,11 @@ func main() {
 	// Handle migration
 	if *fromScript {
 		if err := migrateFromScript(); err != nil {
-			log.Fatalf("Migration from script failed: %v", err)
+			logger.Fatal("Migration from script failed", zap.Error(err))
 		}
 	} else {
 		if err := migrateFromCache(); err != nil {
-			log.Fatalf("Migration from cache failed: %v", err)
+			logger.Fatal("Migration from cache failed", zap.Error(err))
 		}
 	}
 }
@@ -133,7 +145,7 @@ func expandPath(path string) string {
 
 // migrateFromCache migrates from JSON cache files
 func migrateFromCache() error {
-	log.Printf("Migrating from cache directory: %s", *cacheDir)
+	logger.Info("Migrating from cache directory", zap.String("cacheDir", *cacheDir))
 
 	// Check if cache files exist
 	enhancedPath := filepath.Join(*cacheDir, "library_enhanced.json")
@@ -164,7 +176,7 @@ func migrateFromCache() error {
 	}
 
 	// Open database
-	dbManager, err := database.NewDatabaseManager(expandPath(*dbPath))
+	dbManager, err := database.NewDatabaseManager(expandPath(*dbPath), logger)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -203,7 +215,7 @@ func migrateFromCache() error {
 
 // migrateFromScript runs the refresh script and migrates directly
 func migrateFromScript() error {
-	log.Println("Running library refresh script...")
+	logger.Info("Running library refresh script...")
 
 	// Dry run - just show what would be done
 	if *dryRun {
@@ -236,7 +248,7 @@ func migrateFromScript() error {
 		len(enhanced.Data.Tracks), len(enhanced.Data.Playlists))
 
 	// Open database
-	dbManager, err := database.NewDatabaseManager(expandPath(*dbPath))
+	dbManager, err := database.NewDatabaseManager(expandPath(*dbPath), logger)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -336,10 +348,10 @@ func analyzeCache(cacheDir string) error {
 
 // validateDatabase validates an existing database
 func validateDatabase() error {
-	log.Printf("Validating database: %s", *dbPath)
+	logger.Info("Validating database", zap.String("dbPath", *dbPath))
 
 	// Open database
-	dm, err := database.NewDatabaseManager(expandPath(*dbPath))
+	dm, err := database.NewDatabaseManager(expandPath(*dbPath), logger)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -426,6 +438,7 @@ func validateDatabase() error {
 
 	// Sample some tracks
 	fmt.Println("\nSample tracks:")
+
 	rows, err := dm.DB.Query(`
 		SELECT t.name, ar.name, al.name, g.name, t.rating
 		FROM tracks t

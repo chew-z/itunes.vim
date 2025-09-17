@@ -15,12 +15,8 @@ import (
 	"time"
 
 	"itunes/database"
-)
 
-// Exported error variables for better error handling
-var (
-	ErrNoTracksFound = errors.New("no tracks found")
-	ErrScriptFailed  = errors.New("JXA script execution failed")
+	"go.uber.org/zap"
 )
 
 // Track describes one track from the script's output
@@ -169,13 +165,13 @@ type AirPlayDevice struct {
 func runScript(ctx context.Context, scriptContent string, args []string) ([]byte, error) {
 	tempFile, err := os.CreateTemp("", "itunes_*.js")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp file: %w", err)
+		return nil, &ITunesError{Op: "runScript: create temp file", Kind: ErrJXAScript, Err: err}
 	}
 	defer os.Remove(tempFile.Name())
 
 	if _, err := tempFile.WriteString(scriptContent); err != nil {
 		tempFile.Close()
-		return nil, fmt.Errorf("failed to write script to temp file: %w", err)
+		return nil, &ITunesError{Op: "runScript: write to temp file", Kind: ErrJXAScript, Err: err}
 	}
 	tempFile.Close()
 
@@ -191,7 +187,15 @@ func runScript(ctx context.Context, scriptContent string, args []string) ([]byte
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrScriptFailed, stderr.String())
+		return nil, &ITunesError{
+			Op:   "runScript: execute osascript",
+			Kind: ErrJXAScript,
+			Err:  fmt.Errorf("script failed with stderr: %s", stderr.String()),
+			Context: map[string]interface{}{
+				"script": filepath.Base(tempFile.Name()),
+				"args":   args,
+			},
+		}
 	}
 
 	return stdout.Bytes(), nil
@@ -202,11 +206,15 @@ func GetEQStatus() (*EQStatus, error) {
 	// First, check if audio is being routed through AirPlay.
 	audioOutput, err := GetAudioOutput()
 	if err != nil {
-		return nil, fmt.Errorf("could not determine audio output device: %w", err)
+		return nil, &ITunesError{Op: "GetEQStatus: get audio output", Kind: ErrAppleMusic, Err: err}
 	}
 
 	if audioOutput.OutputType == "airplay" {
-		return nil, fmt.Errorf("EQ status cannot be checked while playing to an AirPlay device ('%s')", audioOutput.DeviceName)
+		return nil, &ITunesError{
+			Op:   "GetEQStatus",
+			Kind: ErrAppleMusic,
+			Err:  fmt.Errorf("EQ status cannot be checked while playing to an AirPlay device ('%s')", audioOutput.DeviceName),
+		}
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -214,12 +222,12 @@ func GetEQStatus() (*EQStatus, error) {
 
 	output, err := runScript(ctx, getEQScript, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute get EQ script: %w", err)
+		return nil, &ITunesError{Op: "GetEQStatus: run script", Kind: ErrJXAScript, Err: err}
 	}
 
 	var status EQStatus
 	if err := json.Unmarshal(output, &status); err != nil {
-		return nil, fmt.Errorf("failed to parse EQ status from script output: %w", err)
+		return nil, &ITunesError{Op: "GetEQStatus: unmarshal json", Kind: ErrJXAScript, Err: err}
 	}
 
 	return &status, nil
@@ -232,16 +240,20 @@ func GetAudioOutput() (*AudioOutput, error) {
 
 	output, err := runScript(ctx, getAudioOutputScript, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute get audio output script: %w", err)
+		return nil, &ITunesError{Op: "GetAudioOutput: run script", Kind: ErrJXAScript, Err: err}
 	}
 
 	var audioOutput AudioOutput
 	if err := json.Unmarshal(output, &audioOutput); err != nil {
-		return nil, fmt.Errorf("failed to parse audio output from script: %w", err)
+		return nil, &ITunesError{Op: "GetAudioOutput: unmarshal json", Kind: ErrJXAScript, Err: err}
 	}
 
 	if audioOutput.Error != "" {
-		return nil, fmt.Errorf("script error while getting audio output: %s", audioOutput.Error)
+		return nil, &ITunesError{
+			Op:   "GetAudioOutput: script error",
+			Kind: ErrJXAScript,
+			Err:  fmt.Errorf("%s", audioOutput.Error),
+		}
 	}
 
 	return &audioOutput, nil
@@ -253,14 +265,21 @@ func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
 	// First, check if audio is being routed through AirPlay.
 	audioOutput, err := GetAudioOutput()
 	if err != nil {
-		return nil, fmt.Errorf("could not determine audio output device: %w", err)
+		return nil, &ITunesError{Op: "SetEQStatus: get audio output", Kind: ErrAppleMusic, Err: err}
 	}
 
 	if audioOutput.OutputType == "airplay" {
 		// Get current EQ status instead of returning an error
 		currentStatus, err := GetEQStatus()
 		if err != nil {
-			return nil, fmt.Errorf("could not retrieve current EQ status while using AirPlay device '%s': %w", audioOutput.DeviceName, err)
+			return nil, &ITunesError{
+				Op:   "SetEQStatus: get current EQ status for AirPlay",
+				Kind: ErrAppleMusic,
+				Err:  err,
+				Context: map[string]interface{}{
+					"airplay_device": audioOutput.DeviceName,
+				},
+			}
 		}
 
 		// Return current status with informative message about AirPlay limitation
@@ -292,10 +311,7 @@ func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
 
 	output, err := runScript(ctx, setEQScript, args)
 	if err != nil {
-		if strings.Contains(err.Error(), "execution error") {
-			return nil, fmt.Errorf("failed to set EQ: JXA script execution failed. This can happen if music is playing to an external device or if Apple Music is not in a state to accept EQ changes")
-		}
-		return nil, fmt.Errorf("failed to execute set EQ script: %w", err)
+		return nil, &ITunesError{Op: "SetEQStatus: run script", Kind: ErrJXAScript, Err: err}
 	}
 
 	var status EQStatus
@@ -306,9 +322,13 @@ func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
 			PresetName string `json:"preset_name"`
 		}
 		if json.Unmarshal(output, &scriptError) == nil && scriptError.Error != "" {
-			return nil, fmt.Errorf("script error: %s '%s'", scriptError.Error, scriptError.PresetName)
+			return nil, &ITunesError{
+				Op:   "SetEQStatus: script error",
+				Kind: ErrJXAScript,
+				Err:  fmt.Errorf("script error: %s (preset: %s)", scriptError.Error, scriptError.PresetName),
+			}
 		}
-		return nil, fmt.Errorf("failed to parse EQ status from script output: %w", err)
+		return nil, &ITunesError{Op: "SetEQStatus: unmarshal json", Kind: ErrJXAScript, Err: err}
 	}
 
 	return &status, nil
@@ -321,7 +341,7 @@ func ListAirPlayDevices() ([]AirPlayDevice, error) {
 
 	output, err := runScript(ctx, listAirPlayDevicesScript, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute list AirPlay devices script: %w", err)
+		return nil, &ITunesError{Op: "ListAirPlayDevices: run script", Kind: ErrJXAScript, Err: err}
 	}
 
 	var devices []AirPlayDevice
@@ -331,9 +351,13 @@ func ListAirPlayDevices() ([]AirPlayDevice, error) {
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(output, &scriptError) == nil && scriptError.Error != "" {
-			return nil, fmt.Errorf("script error: %s", scriptError.Error)
+			return nil, &ITunesError{
+				Op:   "ListAirPlayDevices: script error",
+				Kind: ErrJXAScript,
+				Err:  fmt.Errorf("%s", scriptError.Error),
+			}
 		}
-		return nil, fmt.Errorf("failed to parse AirPlay devices from script output: %w", err)
+		return nil, &ITunesError{Op: "ListAirPlayDevices: unmarshal json", Kind: ErrJXAScript, Err: err}
 	}
 
 	return devices, nil
@@ -346,16 +370,23 @@ func SetAirPlayDevice(deviceName string) (*AirPlayDevice, error) {
 
 	output, err := runScript(ctx, setAirPlayDeviceScript, []string{deviceName})
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute set AirPlay device script: %w", err)
+		return nil, &ITunesError{Op: "SetAirPlayDevice: run script", Kind: ErrJXAScript, Err: err}
 	}
 
 	var device AirPlayDevice
 	if err := json.Unmarshal(output, &device); err != nil {
-		return nil, fmt.Errorf("failed to parse AirPlay device from script output: %w", err)
+		return nil, &ITunesError{Op: "SetAirPlayDevice: unmarshal json", Kind: ErrJXAScript, Err: err}
 	}
 
 	if device.Error != "" {
-		return nil, fmt.Errorf("script error: %s", device.Error)
+		return nil, &ITunesError{
+			Op:   "SetAirPlayDevice: script error",
+			Kind: ErrJXAScript,
+			Err:  fmt.Errorf("%s", device.Error),
+			Context: map[string]interface{}{
+				"device_name": deviceName,
+			},
+		}
 	}
 
 	return &device, nil
@@ -371,14 +402,14 @@ func PlayPlaylistTrack(playlistName, albumName, trackName, trackID string) error
 	// Create a temporary file with the embedded script
 	tempFile, err := os.CreateTemp("", "itunes_play_*.js")
 	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
+		return &ITunesError{Op: "PlayPlaylistTrack: create temp file", Kind: ErrJXAScript, Err: err}
 	}
 	defer os.Remove(tempFile.Name())
 	defer tempFile.Close()
 
 	// Write the embedded script to the temp file
 	if _, err := tempFile.WriteString(playScript); err != nil {
-		return fmt.Errorf("failed to write script to temp file: %w", err)
+		return &ITunesError{Op: "PlayPlaylistTrack: write to temp file", Kind: ErrJXAScript, Err: err}
 	}
 	tempFile.Close()
 
@@ -403,20 +434,30 @@ func PlayPlaylistTrack(playlistName, albumName, trackName, trackID string) error
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%w: %s", ErrScriptFailed, stderr.String())
+		return &ITunesError{
+			Op:   "PlayPlaylistTrack: run script",
+			Kind: ErrJXAScript,
+			Err:  fmt.Errorf("script failed with stderr: %s", stderr.String()),
+			Context: map[string]interface{}{
+				"playlist": playlistName,
+				"album":    albumName,
+				"track":    trackName,
+				"track_id": trackID,
+			},
+		}
 	}
 
 	// Parse the new structured response format
 	response := strings.TrimSpace(stdout.String())
 	if response == "" {
-		return errors.New("play script returned no output")
+		return &ITunesError{Op: "PlayPlaylistTrack: empty response", Kind: ErrJXAScript, Err: errors.New("play script returned no output")}
 	}
 
 	// Check for structured error response
 	if strings.HasPrefix(response, "ERROR:") {
 		errorMsg := strings.TrimPrefix(response, "ERROR:")
 		errorMsg = strings.TrimSpace(errorMsg)
-		return fmt.Errorf("play script error: %s", errorMsg)
+		return &ITunesError{Op: "PlayPlaylistTrack: script error", Kind: ErrJXAScript, Err: fmt.Errorf("%s", errorMsg)}
 	}
 
 	// Check for success response
@@ -434,13 +475,13 @@ func PlayPlaylistTrack(playlistName, albumName, trackName, trackID string) error
 
 	if err := json.Unmarshal(stdout.Bytes(), &jsonResponse); err == nil {
 		if jsonResponse.Status == "error" {
-			return fmt.Errorf("play script error: %s", jsonResponse.Message)
+			return &ITunesError{Op: "PlayPlaylistTrack: script error (json)", Kind: ErrJXAScript, Err: fmt.Errorf("%s", jsonResponse.Message)}
 		}
 		return nil
 	}
 
 	// Unknown response format
-	return fmt.Errorf("unexpected play script response: %s", response)
+	return &ITunesError{Op: "PlayPlaylistTrack: unknown response", Kind: ErrJXAScript, Err: fmt.Errorf("unexpected play script response: %s", response)}
 }
 
 // RefreshLibraryCache runs the embedded iTunes_Refresh_Library.js script to build a comprehensive library cache.
@@ -452,20 +493,20 @@ func RefreshLibraryCache() error {
 	// Ensure cache directory exists
 	cacheDir := filepath.Join(os.TempDir(), "itunes-cache")
 	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return fmt.Errorf("failed to create cache directory: %w", err)
+		return &ITunesError{Op: "RefreshLibraryCache: create cache dir", Kind: ErrJXAScript, Err: err}
 	}
 
 	// Create a temporary file with the embedded refresh script
 	tempFile, err := os.CreateTemp("", "itunes_refresh_*.js")
 	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
+		return &ITunesError{Op: "RefreshLibraryCache: create temp file", Kind: ErrJXAScript, Err: err}
 	}
 	defer os.Remove(tempFile.Name())
 	defer tempFile.Close()
 
 	// Write the embedded refresh script to the temp file
 	if _, err := tempFile.WriteString(refreshScript); err != nil {
-		return fmt.Errorf("failed to write refresh script to temp file: %w", err)
+		return &ITunesError{Op: "RefreshLibraryCache: write to temp file", Kind: ErrJXAScript, Err: err}
 	}
 	tempFile.Close()
 
@@ -481,7 +522,7 @@ func RefreshLibraryCache() error {
 
 	// Start the command
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("failed to start refresh script: %w", err)
+		return &ITunesError{Op: "RefreshLibraryCache: start script", Kind: ErrJXAScript, Err: err}
 	}
 
 	// Show progress dots while script is running
@@ -508,37 +549,41 @@ scriptComplete:
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok {
 			if exitError.ExitCode() == 1 {
-				return errors.New("no tracks found in library")
+				return &ITunesError{Op: "RefreshLibraryCache", Kind: ErrNoTracksFound, Err: errors.New("no tracks found in library")}
 			}
 		}
-		return fmt.Errorf("%w: %s", ErrScriptFailed, stderr.String())
+		return &ITunesError{
+			Op:   "RefreshLibraryCache: run script",
+			Kind: ErrJXAScript,
+			Err:  fmt.Errorf("script failed with stderr: %s", stderr.String()),
+		}
 	}
 
 	// Get the JSON output from the refresh script
 	responseJSON := stdout.Bytes()
 	if len(responseJSON) == 0 {
-		return errors.New("refresh script returned no data")
+		return &ITunesError{Op: "RefreshLibraryCache: empty response", Kind: ErrJXAScript, Err: errors.New("refresh script returned no data")}
 	}
 
 	// Parse the structured response using correct database structure
 	var response database.RefreshResponse
 	if err := json.Unmarshal(responseJSON, &response); err != nil {
-		return fmt.Errorf("failed to parse refresh script response: %w", err)
+		return &ITunesError{Op: "RefreshLibraryCache: unmarshal json", Kind: ErrJXAScript, Err: err}
 	}
 
 	if response.Status != "success" {
-		return fmt.Errorf("refresh script failed: %s", response.Error)
+		return &ITunesError{Op: "RefreshLibraryCache: script error", Kind: ErrJXAScript, Err: fmt.Errorf("%s", response.Error)}
 	}
 
 	// Write enhanced cache file (full structure for migration tool)
 	enhancedJSON, err := json.Marshal(response)
 	if err != nil {
-		return fmt.Errorf("failed to marshal enhanced response: %w", err)
+		return &ITunesError{Op: "RefreshLibraryCache: marshal enhanced json", Kind: ErrJXAScript, Err: err}
 	}
 
 	enhancedFile := filepath.Join(cacheDir, "library_enhanced.json")
 	if err := os.WriteFile(enhancedFile, enhancedJSON, 0644); err != nil {
-		return fmt.Errorf("failed to write enhanced cache file: %w", err)
+		return &ITunesError{Op: "RefreshLibraryCache: write enhanced cache", Kind: ErrJXAScript, Err: err}
 	}
 
 	// Write legacy cache file (tracks only) for backward compatibility
@@ -547,7 +592,7 @@ scriptComplete:
 		legacyTracks := make([]Track, len(response.Data.Tracks))
 		for i, jsonTrack := range response.Data.Tracks {
 			legacyTracks[i] = Track{
-				ID:           jsonTrack.PersistentID,
+				ID:           jsonTrack.PersistentID, // Use persistent ID as the main ID
 				PersistentID: jsonTrack.PersistentID,
 				Name:         jsonTrack.Name,
 				Album:        jsonTrack.Album,
@@ -565,12 +610,12 @@ scriptComplete:
 
 		libraryJSON, err := json.Marshal(legacyTracks)
 		if err != nil {
-			return fmt.Errorf("failed to marshal legacy track data: %w", err)
+			return &ITunesError{Op: "RefreshLibraryCache: marshal legacy json", Kind: ErrJXAScript, Err: err}
 		}
 
 		cacheFile := filepath.Join(cacheDir, "library.json")
 		if err := os.WriteFile(cacheFile, libraryJSON, 0644); err != nil {
-			return fmt.Errorf("failed to write legacy cache file: %w", err)
+			return &ITunesError{Op: "RefreshLibraryCache: write legacy cache", Kind: ErrJXAScript, Err: err}
 		}
 	}
 
@@ -579,18 +624,34 @@ scriptComplete:
 
 // GetNowPlaying runs the embedded iTunes_Now_Playing.js script to get current playback status
 func GetNowPlaying() (*NowPlayingStatus, error) {
+	var status *NowPlayingStatus
+	var err error
+
+	err = retryWithBackoff(func() error {
+		status, err = getNowPlayingAttempt()
+		return err
+	}, 3)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return status, nil
+}
+
+func getNowPlayingAttempt() (*NowPlayingStatus, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	// Create temporary file for the embedded script
 	tempFile, err := os.CreateTemp("", "itunes_now_playing_*.js")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp file: %w", err)
+		return nil, &ITunesError{Op: "GetNowPlaying: create temp file", Kind: ErrJXAScript, Err: err}
 	}
 	defer os.Remove(tempFile.Name())
 
 	if _, err := tempFile.WriteString(nowPlayingScript); err != nil {
-		return nil, fmt.Errorf("failed to write now playing script to temp file: %w", err)
+		return nil, &ITunesError{Op: "GetNowPlaying: write to temp file", Kind: ErrJXAScript, Err: err}
 	}
 	tempFile.Close()
 
@@ -602,19 +663,23 @@ func GetNowPlaying() (*NowPlayingStatus, error) {
 
 	err = cmd.Run()
 	if err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrScriptFailed, stderr.String())
+		return nil, &ITunesError{
+			Op:   "GetNowPlaying: run script",
+			Kind: ErrJXAScript,
+			Err:  fmt.Errorf("script failed with stderr: %s", stderr.String()),
+		}
 	}
 
 	// Parse the JSON response
 	responseJSON := stdout.Bytes()
 	if len(responseJSON) == 0 {
-		return nil, errors.New("now playing script returned no data")
+		return nil, &ITunesError{Op: "GetNowPlaying: empty response", Kind: ErrJXAScript, Err: errors.New("now playing script returned no data")}
 	}
 
 	// First parse the raw JavaScript response
 	var jsResponse jsNowPlayingResponse
 	if err := json.Unmarshal(responseJSON, &jsResponse); err != nil {
-		return nil, fmt.Errorf("failed to parse now playing script response: %w", err)
+		return nil, &ITunesError{Op: "GetNowPlaying: unmarshal json", Kind: ErrJXAScript, Err: err}
 	}
 
 	// Convert to appropriate response structure
@@ -667,7 +732,7 @@ func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID str
 
 	if err != nil {
 		result.Message = fmt.Sprintf("Playback failed: %v", err)
-		return result, nil
+		return result, &ITunesError{Op: "PlayPlaylistTrackWithStatus: playback failed", Kind: ErrAppleMusic, Err: err}
 	}
 
 	// Give Apple Music a moment to start playing
@@ -678,7 +743,7 @@ func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID str
 	if nowPlayingErr != nil {
 		// Don't fail the whole operation if we can't get now playing info
 		result.Message = "Playback started, but could not get current track info"
-		return result, fmt.Errorf("could not get 'now playing' status after starting playback: %w", nowPlayingErr)
+		return result, &ITunesError{Op: "PlayPlaylistTrackWithStatus: get now playing", Kind: ErrAppleMusic, Err: nowPlayingErr}
 	}
 
 	result.NowPlaying = nowPlaying
@@ -707,12 +772,12 @@ func PlayStreamURL(streamURL string) (*PlayResult, error) {
 	// Create temporary file for the embedded script
 	tempFile, err := os.CreateTemp("", "itunes_play_stream_*.js")
 	if err != nil {
-		return nil, fmt.Errorf("failed to create temp file: %w", err)
+		return nil, &ITunesError{Op: "PlayStreamURL: create temp file", Kind: ErrJXAScript, Err: err}
 	}
 	defer os.Remove(tempFile.Name())
 
 	if _, err := tempFile.WriteString(playStreamScript); err != nil {
-		return nil, fmt.Errorf("failed to write play stream script to temp file: %w", err)
+		return nil, &ITunesError{Op: "PlayStreamURL: write to temp file", Kind: ErrJXAScript, Err: err}
 	}
 	tempFile.Close()
 
@@ -731,16 +796,16 @@ func PlayStreamURL(streamURL string) (*PlayResult, error) {
 	if err != nil {
 		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
 			result.Message = fmt.Sprintf("Stream playback failed: %s", response)
-			return result, nil
+			return result, &ITunesError{Op: "PlayStreamURL: playback failed", Kind: ErrAppleMusic, Err: fmt.Errorf("%s", result.Message)}
 		}
 		result.Message = fmt.Sprintf("Script execution failed: %v", err)
-		return result, nil
+		return result, &ITunesError{Op: "PlayStreamURL: run script", Kind: ErrJXAScript, Err: err}
 	}
 
 	if strings.HasPrefix(response, "ERROR:") {
 		result.Success = false
 		result.Message = strings.TrimPrefix(response, "ERROR: ")
-		return result, nil
+		return result, &ITunesError{Op: "PlayStreamURL: script error", Kind: ErrJXAScript, Err: fmt.Errorf("%s", result.Message)}
 	}
 
 	// Give Apple Music more time to process the new stream URL
@@ -768,13 +833,25 @@ func PlayStreamURL(streamURL string) (*PlayResult, error) {
 
 // Database integration variables
 var (
-	dbManager     *database.DatabaseManager
-	searchManager *database.SearchManager
+	DBManager     *database.DatabaseManager
+	SearchManager *database.SearchManager
 	SearchLimit   = 15 // Default search limit, can be overridden by ITUNES_SEARCH_LIMIT env var
 )
 
+func retryWithBackoff(fn func() error, maxRetries int) error {
+	backoff := 100 * time.Millisecond
+	for i := 0; i < maxRetries; i++ {
+		if err := fn(); err == nil {
+			return nil
+		}
+		time.Sleep(backoff)
+		backoff *= 2
+	}
+	return fmt.Errorf("failed after %d retries", maxRetries)
+}
+
 // InitDatabase initializes the SQLite database connection
-func InitDatabase() error {
+func InitDatabase(logger *zap.Logger) error {
 	// Get search limit from environment if set
 	if limitStr := os.Getenv("ITUNES_SEARCH_LIMIT"); limitStr != "" {
 		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
@@ -783,35 +860,35 @@ func InitDatabase() error {
 	}
 
 	// Initialize database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath)
+	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
 	if err != nil {
-		return fmt.Errorf("failed to initialize database: %w", err)
+		return &ITunesError{Op: "InitDatabase: new database manager", Kind: ErrDatabase, Err: err}
 	}
 
 	// Run migrations to ensure schema is up to date
 	if err := dm.RunMigrations(); err != nil {
 		dm.Close()
-		return fmt.Errorf("failed to run database migrations: %w", err)
+		return &ITunesError{Op: "InitDatabase: run migrations", Kind: ErrDatabase, Err: err}
 	}
 
-	dbManager = dm
-	searchManager = database.NewSearchManager(dm)
+	DBManager = dm
+	SearchManager = database.NewSearchManager(dm)
 	return nil
 }
 
 // CloseDatabase closes the database connection
 func CloseDatabase() {
-	if dbManager != nil {
-		dbManager.Close()
-		dbManager = nil
-		searchManager = nil
+	if DBManager != nil {
+		DBManager.Close()
+		DBManager = nil
+		SearchManager = nil
 	}
 }
 
 // SearchTracksFromDatabase searches tracks using the SQLite database with FTS5
 func SearchTracksFromDatabase(query string, filters *database.SearchFilters) ([]Track, error) {
-	if dbManager == nil {
-		return nil, errors.New("database not initialized")
+	if DBManager == nil {
+		return nil, &ITunesError{Op: "SearchTracksFromDatabase", Kind: ErrDatabase, Err: errors.New("database not initialized")}
 	}
 
 	// Apply default search limit if not specified in filters
@@ -822,9 +899,9 @@ func SearchTracksFromDatabase(query string, filters *database.SearchFilters) ([]
 	}
 
 	// Use search manager for cached search
-	dbTracks, err := searchManager.SearchWithCache(query, filters)
+	dbTracks, err := SearchManager.SearchWithCache(query, filters)
 	if err != nil {
-		return nil, fmt.Errorf("database search failed: %w", err)
+		return nil, &ITunesError{Op: "SearchTracksFromDatabase: search with cache", Kind: ErrDatabase, Err: err}
 	}
 
 	// Convert database tracks to API tracks
@@ -852,13 +929,17 @@ func SearchTracksFromDatabase(query string, filters *database.SearchFilters) ([]
 
 // GetTrackByPersistentID retrieves a single track by its persistent ID
 func GetTrackByPersistentID(persistentID string) (*Track, error) {
-	if dbManager == nil {
-		return nil, errors.New("database not initialized")
+	if DBManager == nil {
+		return nil, &ITunesError{Op: "GetTrackByPersistentID", Kind: ErrDatabase, Err: errors.New("database not initialized")}
 	}
 
-	dbTrack, err := dbManager.GetTrackByPersistentID(persistentID)
+	dbTrack, err := DBManager.GetTrackByPersistentID(persistentID)
 	if err != nil {
-		return nil, err
+		return nil, &ITunesError{Op: "GetTrackByPersistentID: get from db", Kind: ErrDatabase, Err: err}
+	}
+
+	if dbTrack == nil {
+		return nil, &ITunesError{Op: "GetTrackByPersistentID", Kind: ErrNoTracksFound, Err: fmt.Errorf("track with persistent ID '%s' not found", persistentID)}
 	}
 
 	track := &Track{
@@ -882,13 +963,13 @@ func GetTrackByPersistentID(persistentID string) (*Track, error) {
 
 // GetPlaylistTracks retrieves all tracks in a playlist
 func GetPlaylistTracks(playlistIdentifier string, usePlaylistID bool) ([]Track, error) {
-	if dbManager == nil {
-		return nil, errors.New("database not initialized")
+	if DBManager == nil {
+		return nil, &ITunesError{Op: "GetPlaylistTracks", Kind: ErrDatabase, Err: errors.New("database not initialized")}
 	}
 
-	dbTracks, err := dbManager.GetPlaylistTracks(playlistIdentifier, usePlaylistID)
+	dbTracks, err := DBManager.GetPlaylistTracks(playlistIdentifier, usePlaylistID)
 	if err != nil {
-		return nil, err
+		return nil, &ITunesError{Op: "GetPlaylistTracks: get from db", Kind: ErrDatabase, Err: err}
 	}
 
 	tracks := make([]Track, len(dbTracks))
@@ -915,51 +996,59 @@ func GetPlaylistTracks(playlistIdentifier string, usePlaylistID bool) ([]Track, 
 
 // GetDatabaseStats returns database statistics
 func GetDatabaseStats() (*database.DatabaseStats, error) {
-	if dbManager == nil {
-		return nil, errors.New("database not initialized")
+	if DBManager == nil {
+		return nil, &ITunesError{Op: "GetDatabaseStats", Kind: ErrDatabase, Err: errors.New("database not initialized")}
 	}
-	return dbManager.GetStats()
+	stats, err := DBManager.GetStats()
+	if err != nil {
+		return nil, &ITunesError{Op: "GetDatabaseStats: get from db", Kind: ErrDatabase, Err: err}
+	}
+	return stats, nil
 }
 
 // ListPlaylists returns all user playlists from the database
 func ListPlaylists() ([]database.Playlist, error) {
-	if dbManager == nil {
-		return nil, errors.New("database not initialized")
+	if DBManager == nil {
+		return nil, &ITunesError{Op: "ListPlaylists", Kind: ErrDatabase, Err: errors.New("database not initialized")}
 	}
-	return dbManager.ListPlaylists()
+	playlists, err := DBManager.ListPlaylists()
+	if err != nil {
+		return nil, &ITunesError{Op: "ListPlaylists: get from db", Kind: ErrDatabase, Err: err}
+	}
+	return playlists, nil
 }
 
 // SearchTracks is the main search function using database
 func SearchTracks(query string) ([]Track, error) {
-	if dbManager == nil {
-		return nil, errors.New("database not initialized - please run InitDatabase() first")
+	if DBManager == nil {
+		return nil, &ITunesError{Op: "SearchTracks", Kind: ErrDatabase, Err: errors.New("database not initialized - please run InitDatabase() first")}
 	}
 	return SearchTracksFromDatabase(query, nil)
 }
 
 // SearchStations searches for radio stations in the database
 func SearchStations(query string) (*StationSearchResult, error) {
-	if dbManager == nil {
+	if DBManager == nil {
 		return &StationSearchResult{
 			Status:  "error",
 			Query:   query,
 			Count:   0,
 			Message: "Database not initialized - please run InitDatabase() first or import stations with 'itunes import-stations stations.json'",
-		}, errors.New("database not initialized - please run InitDatabase() first")
+		}, &ITunesError{Op: "SearchStations", Kind: ErrDatabase, Err: errors.New("database not initialized - please run InitDatabase() first")}
 	}
 
 	filters := &database.RadioStationFilters{
 		Limit: 15, // Default limit, can be made configurable
 	}
 
-	stations, err := dbManager.SearchRadioStations(query, filters)
+	stations, err := DBManager.SearchRadioStations(query, filters)
 	if err != nil {
 		return &StationSearchResult{
 			Status:  "error",
 			Query:   query,
 			Count:   0,
 			Message: fmt.Sprintf("Failed to search radio stations: %v", err),
-		}, fmt.Errorf("failed to search radio stations: %w", err)
+		}, &ITunesError{Op: "SearchStations: search in db", Kind: ErrDatabase, Err: err}
 	}
 
 	// Convert database stations to API stations

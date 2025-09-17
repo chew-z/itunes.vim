@@ -12,6 +12,7 @@ import (
 	"itunes/itunes"
 
 	"github.com/mark3labs/mcp-go/mcp"
+	"go.uber.org/zap"
 )
 
 // TestMain sets up the test database
@@ -27,7 +28,7 @@ func TestMain(m *testing.M) {
 	database.PrimaryDBPath = testDBPath
 
 	// Initialize database using the iTunes package
-	if err := itunes.InitDatabase(); err != nil {
+	if err := itunes.InitDatabase(zap.NewNop()); err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize test database: %v\n", err)
 		os.Exit(1)
 	}
@@ -50,7 +51,7 @@ func TestMain(m *testing.M) {
 
 func populateTestData() error {
 	// Use the same database path that was set in TestMain
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath)
+	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, zap.NewNop())
 	if err != nil {
 		return err
 	}

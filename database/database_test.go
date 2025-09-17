@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // TestDatabaseManager tests database initialization and schema creation
@@ -17,7 +19,7 @@ func TestDatabaseManager(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "test.db")
 
 	// Create database manager
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database manager: %v", err)
 	}
@@ -54,7 +56,7 @@ func TestSchemaIdempotency(t *testing.T) {
 			t.Fatalf("Failed to open database: %v", err)
 		}
 
-		err = InitSchema(db)
+		err = InitSchema(db, zap.NewNop())
 		if err != nil {
 			t.Fatalf("Failed to initialize schema on iteration %d: %v", i, err)
 		}
@@ -76,7 +78,7 @@ func TestBasicCRUDOperations(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database manager: %v", err)
 	}
@@ -178,7 +180,7 @@ func TestSearchFilters(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database manager: %v", err)
 	}
@@ -231,7 +233,7 @@ func BenchmarkInsertTracks(b *testing.B) {
 	tmpDir := b.TempDir()
 	dbPath := filepath.Join(tmpDir, "bench.db")
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		b.Fatalf("Failed to create database manager: %v", err)
 	}
@@ -269,7 +271,7 @@ func BenchmarkSearchPerformance(b *testing.B) {
 	tmpDir := b.TempDir()
 	dbPath := filepath.Join(tmpDir, "bench.db")
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		b.Fatalf("Failed to create database manager: %v", err)
 	}
@@ -335,7 +337,7 @@ func TestFTSSearchPerformance(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "perf.db")
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database manager: %v", err)
 	}
@@ -432,7 +434,7 @@ func TestVacuum(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database manager: %v", err)
 	}

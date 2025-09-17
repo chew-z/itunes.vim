@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 func TestSearchQueryBuilder(t *testing.T) {
@@ -178,7 +180,7 @@ func TestDatabaseSearchWithFTS(t *testing.T) {
 	dbPath := filepath.Join(os.TempDir(), "test_search.db")
 	defer os.Remove(dbPath)
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -357,7 +359,7 @@ func TestSearchPerformance(t *testing.T) {
 	dbPath := filepath.Join(os.TempDir(), "test_perf.db")
 	defer os.Remove(dbPath)
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -455,7 +457,7 @@ func TestSearchMetrics(t *testing.T) {
 	dbPath := filepath.Join(os.TempDir(), "test_metrics.db")
 	defer os.Remove(dbPath)
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -507,7 +509,7 @@ func BenchmarkDatabaseSearch(b *testing.B) {
 	dbPath := filepath.Join(os.TempDir(), "bench_search.db")
 	defer os.Remove(dbPath)
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		b.Fatalf("Failed to create database: %v", err)
 	}

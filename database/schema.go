@@ -3,7 +3,8 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"log"
+
+	"go.uber.org/zap"
 )
 
 // SchemaVersion represents the current database schema version
@@ -701,7 +702,7 @@ var Schema = []Migration{
 }
 
 // InitSchema initializes the database schema
-func InitSchema(db *sql.DB) error {
+func InitSchema(db *sql.DB, logger *zap.Logger) error {
 	// Set optimal SQLite pragmas for performance
 	pragmas := []string{
 		"PRAGMA journal_mode = WAL",
@@ -732,7 +733,7 @@ func InitSchema(db *sql.DB) error {
 	// Apply migrations
 	for _, migration := range Schema {
 		if migration.Version > currentVersion {
-			log.Printf("Applying migration %d: %s", migration.Version, migration.Description)
+			logger.Info("Applying migration", zap.Int("version", migration.Version), zap.String("description", migration.Description))
 
 			tx, err := db.Begin()
 			if err != nil {
@@ -748,13 +749,13 @@ func InitSchema(db *sql.DB) error {
 				return fmt.Errorf("failed to commit migration %d: %w", migration.Version, err)
 			}
 
-			log.Printf("Successfully applied migration %d", migration.Version)
+			logger.Info("Successfully applied migration", zap.Int("version", migration.Version))
 		}
 	}
 
 	// Run ANALYZE to update SQLite statistics
 	if _, err := db.Exec("ANALYZE"); err != nil {
-		log.Printf("Warning: failed to run ANALYZE: %v", err)
+		logger.Warn("Failed to run ANALYZE", zap.Error(err))
 	}
 
 	return nil
@@ -771,12 +772,12 @@ func GetSchemaVersion(db *sql.DB) (int, error) {
 }
 
 // MigrateUp applies all pending migrations
-func MigrateUp(db *sql.DB) error {
-	return InitSchema(db)
+func MigrateUp(db *sql.DB, logger *zap.Logger) error {
+	return InitSchema(db, logger)
 }
 
 // MigrateDown rolls back to a specific version
-func MigrateDown(db *sql.DB, targetVersion int) error {
+func MigrateDown(db *sql.DB, targetVersion int, logger *zap.Logger) error {
 	currentVersion, err := GetSchemaVersion(db)
 	if err != nil {
 		return err
@@ -790,7 +791,7 @@ func MigrateDown(db *sql.DB, targetVersion int) error {
 	for i := len(Schema) - 1; i >= 0; i-- {
 		migration := Schema[i]
 		if migration.Version > targetVersion && migration.Version <= currentVersion {
-			log.Printf("Rolling back migration %d: %s", migration.Version, migration.Description)
+			logger.Info("Rolling back migration", zap.Int("version", migration.Version), zap.String("description", migration.Description))
 
 			tx, err := db.Begin()
 			if err != nil {
@@ -812,7 +813,7 @@ func MigrateDown(db *sql.DB, targetVersion int) error {
 				return fmt.Errorf("failed to commit rollback %d: %w", migration.Version, err)
 			}
 
-			log.Printf("Successfully rolled back migration %d", migration.Version)
+			logger.Info("Successfully rolled back migration", zap.Int("version", migration.Version))
 		}
 	}
 

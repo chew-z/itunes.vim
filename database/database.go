@@ -3,12 +3,12 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"go.uber.org/zap"
 	_ "modernc.org/sqlite"
 )
 
@@ -28,7 +28,8 @@ func getDBPath(envVar, defaultPath string) string {
 
 // DatabaseManager handles all database operations
 type DatabaseManager struct {
-	DB *sql.DB
+	DB     *sql.DB
+	Logger *zap.Logger
 }
 
 // Track represents a music track with Apple Music persistent ID
@@ -112,7 +113,7 @@ type DatabaseStats struct {
 }
 
 // NewDatabaseManager creates a new database manager instance
-func NewDatabaseManager(dbPath string) (*DatabaseManager, error) {
+func NewDatabaseManager(dbPath string, logger *zap.Logger) (*DatabaseManager, error) {
 	// Expand home directory
 	if strings.HasPrefix(dbPath, "~/") {
 		home, err := os.UserHomeDir()
@@ -140,10 +141,10 @@ func NewDatabaseManager(dbPath string) (*DatabaseManager, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	dm := &DatabaseManager{DB: db}
+	dm := &DatabaseManager{DB: db, Logger: logger}
 
 	// Initialize schema
-	if err := InitSchema(db); err != nil {
+	if err := InitSchema(db, logger); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
@@ -548,10 +549,10 @@ func (dm *DatabaseManager) GetStats() (*DatabaseStats, error) {
 	// Get database size
 	var pageCount, pageSize int64
 	if err := dm.DB.QueryRow("PRAGMA page_count").Scan(&pageCount); err != nil {
-		log.Printf("Failed to get page count: %v", err)
+		dm.Logger.Warn("Failed to get page count", zap.Error(err))
 	}
 	if err := dm.DB.QueryRow("PRAGMA page_size").Scan(&pageSize); err != nil {
-		log.Printf("Failed to get page size: %v", err)
+		dm.Logger.Warn("Failed to get page size", zap.Error(err))
 	}
 	stats.DatabaseSize = pageCount * pageSize
 
@@ -566,7 +567,7 @@ func (dm *DatabaseManager) Vacuum() error {
 
 // RunMigrations ensures all database migrations are applied
 func (dm *DatabaseManager) RunMigrations() error {
-	return InitSchema(dm.DB)
+	return InitSchema(dm.DB, dm.Logger)
 }
 
 // BatchInsertTracks inserts multiple tracks in a single transaction
@@ -754,7 +755,7 @@ func (dm *DatabaseManager) GetPlaylistByPersistentID(persistentID string) (*Play
 	`, persistentID).Scan(&playlist.TrackCount)
 
 	if err != nil {
-		log.Printf("Failed to get playlist track count: %v", err)
+		dm.Logger.Warn("Failed to get playlist track count", zap.Error(err))
 	}
 
 	return playlist, nil
@@ -919,7 +920,7 @@ func (dm *DatabaseManager) SearchRadioStations(query string, filters *RadioStati
 	}
 
 	searchQuery := fmt.Sprintf(`
-		SELECT DISTINCT rs.id, rs.name, rs.url, rs.description, 
+		SELECT DISTINCT rs.id, rs.name, rs.url, rs.description,
 			   g.name as genre, rs.genre_id,
 			   COALESCE(rs.homepage, '') as homepage,
 			   rs.verified_at, rs.is_active, rs.created_at, rs.updated_at
@@ -1080,7 +1081,7 @@ func (dm *DatabaseManager) DeleteRadioStation(id int64) error {
 func (dm *DatabaseManager) GetRadioStationByID(id int64) (*RadioStation, error) {
 	var station RadioStation
 	query := `
-		SELECT rs.id, rs.name, rs.url, rs.description, 
+		SELECT rs.id, rs.name, rs.url, rs.description,
 			   g.name as genre, rs.genre_id,
 			   COALESCE(rs.homepage, '') as homepage,
 			   rs.verified_at, rs.is_active, rs.created_at, rs.updated_at
@@ -1123,7 +1124,7 @@ func (dm *DatabaseManager) ImportRadioStations(stations []RadioStation) error {
 
 		genreID, err := dm.GetOrCreateGenre(genreName)
 		if err != nil {
-			log.Printf("Warning: failed to get or create genre for station %s: %v", station.Name, err)
+			dm.Logger.Warn("failed to get or create genre for station", zap.String("station", station.Name), zap.Error(err))
 			continue
 		}
 
@@ -1134,7 +1135,7 @@ func (dm *DatabaseManager) ImportRadioStations(stations []RadioStation) error {
 		`, station.Name, station.URL, station.Description, genreID, station.Homepage, true)
 
 		if err != nil {
-			log.Printf("Warning: failed to insert station %s: %v", station.Name, err)
+			dm.Logger.Warn("failed to insert station", zap.String("station", station.Name), zap.Error(err))
 		} else {
 			successCount++
 		}
@@ -1144,6 +1145,6 @@ func (dm *DatabaseManager) ImportRadioStations(stations []RadioStation) error {
 		return fmt.Errorf("failed to commit import: %w", err)
 	}
 
-	log.Printf("Successfully imported %d/%d radio stations", successCount, len(stations))
+	dm.Logger.Info("Successfully imported radio stations", zap.Int("successCount", successCount), zap.Int("totalCount", len(stations)))
 	return nil
 }

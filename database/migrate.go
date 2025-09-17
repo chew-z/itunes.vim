@@ -4,11 +4,12 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // RefreshResponse matches the structure from iTunes refresh script
@@ -125,7 +126,7 @@ func (dm *DatabaseManager) MigrateFromJSON(cacheDir string, callback ProgressCal
 			response.Data.Playlists = append(response.Data.Playlists, *playlist)
 		}
 
-		log.Printf("Extracted %d playlists from legacy format", len(response.Data.Playlists))
+		dm.Logger.Info("Extracted playlists from legacy format", zap.Int("count", len(response.Data.Playlists)))
 
 		return dm.populateFromRefreshResponse(response, callback)
 	}
@@ -181,7 +182,7 @@ func (dm *DatabaseManager) populateFromRefreshResponse(response *RefreshResponse
 		playlistID, err := dm.insertPlaylistTx(tx, &playlist)
 		if err != nil {
 			progress.Errors = append(progress.Errors, fmt.Errorf("playlist %s: %w", playlist.Name, err))
-			log.Printf("Error inserting playlist %s: %v", playlist.Name, err)
+			dm.Logger.Error("Error inserting playlist", zap.String("playlist", playlist.Name), zap.Error(err))
 			continue
 		}
 		playlistIDMap[playlist.ID] = playlistID
@@ -204,7 +205,7 @@ func (dm *DatabaseManager) populateFromRefreshResponse(response *RefreshResponse
 		batch := response.Data.Tracks[i:end]
 		if err := dm.batchInsertTracksTx(tx, batch, playlistNameToID); err != nil {
 			progress.Errors = append(progress.Errors, fmt.Errorf("batch %d-%d: %w", i, end, err))
-			log.Printf("Error inserting batch %d-%d: %v", i, end, err)
+			dm.Logger.Error("Error inserting batch", zap.Int("start", i), zap.Int("end", end), zap.Error(err))
 			continue
 		}
 
@@ -227,7 +228,7 @@ func (dm *DatabaseManager) populateFromRefreshResponse(response *RefreshResponse
 
 	// Run ANALYZE to update statistics
 	if _, err := dm.DB.Exec("ANALYZE"); err != nil {
-		log.Printf("Warning: failed to run ANALYZE: %v", err)
+		dm.Logger.Warn("Failed to run ANALYZE", zap.Error(err))
 	}
 
 	// Final callback
@@ -237,7 +238,7 @@ func (dm *DatabaseManager) populateFromRefreshResponse(response *RefreshResponse
 	}
 
 	if len(progress.Errors) > 0 {
-		log.Printf("Migration completed with %d errors", len(progress.Errors))
+		dm.Logger.Warn("Migration completed with errors", zap.Int("error_count", len(progress.Errors)))
 	}
 
 	return nil
@@ -296,13 +297,13 @@ func (dm *DatabaseManager) batchInsertTracksTx(tx *sql.Tx, tracks []JSONTrack, p
 	for _, track := range tracks {
 		trackID, err := dm.insertTrackTx(tx, &track, artistStmt, genreStmt)
 		if err != nil {
-			log.Printf("Error inserting track %s: %v", track.Name, err)
+			dm.Logger.Error("Error inserting track", zap.String("track", track.Name), zap.Error(err))
 			continue
 		}
 
 		// Handle playlist associations
 		if err := dm.insertPlaylistTracksTx(tx, trackID, track.Playlists, playlistNameToID); err != nil {
-			log.Printf("Error associating track %s with playlists: %v", track.Name, err)
+			dm.Logger.Error("Error associating track with playlists", zap.String("track", track.Name), zap.Error(err))
 		}
 	}
 
@@ -484,17 +485,17 @@ func (dm *DatabaseManager) insertPlaylistTracksTx(tx *sql.Tx, trackID int64, pla
 			err := tx.QueryRow("SELECT id FROM playlists WHERE name = ?", playlistName).Scan(&playlistID)
 			if err == sql.ErrNoRows {
 				// Create playlist if it doesn't exist (should rarely happen now)
-				log.Printf("Creating untracked playlist: %s", playlistName)
+				dm.Logger.Info("Creating untracked playlist", zap.String("playlist", playlistName))
 				result, err := tx.Exec("INSERT INTO playlists (persistent_id, name, special_kind) VALUES (?, ?, ?)",
 					fmt.Sprintf("UNTRACKED_%s", strings.ReplaceAll(playlistName, " ", "_")),
 					playlistName, "none")
 				if err != nil {
-					log.Printf("Failed to create playlist %s: %v", playlistName, err)
+					dm.Logger.Error("Failed to create playlist", zap.String("playlist", playlistName), zap.Error(err))
 					continue
 				}
 				playlistID, _ = result.LastInsertId()
 			} else if err != nil {
-				log.Printf("Failed to find playlist %s: %v", playlistName, err)
+				dm.Logger.Error("Failed to find playlist", zap.String("playlist", playlistName), zap.Error(err))
 				continue
 			}
 		}
@@ -505,7 +506,7 @@ func (dm *DatabaseManager) insertPlaylistTracksTx(tx *sql.Tx, trackID int64, pla
 			SELECT MAX(position) FROM playlist_tracks WHERE playlist_id = ?
 		`, playlistID).Scan(&maxPosition)
 		if err != nil && err != sql.ErrNoRows {
-			log.Printf("Failed to get max position for playlist %d: %v", playlistID, err)
+			dm.Logger.Error("Failed to get max position for playlist", zap.Int64("playlist_id", playlistID), zap.Error(err))
 			continue
 		}
 
@@ -520,7 +521,7 @@ func (dm *DatabaseManager) insertPlaylistTracksTx(tx *sql.Tx, trackID int64, pla
 			VALUES (?, ?, ?)
 		`, playlistID, trackID, nextPosition)
 		if err != nil {
-			log.Printf("Failed to associate track with playlist %s: %v", playlistName, err)
+			dm.Logger.Error("Failed to associate track with playlist", zap.String("playlist", playlistName), zap.Error(err))
 		}
 	}
 
@@ -585,15 +586,15 @@ func (dm *DatabaseManager) BatchUpdateTracks(tracks []JSONTrack) error {
 		if err == nil {
 			// Update existing track
 			if _, err := dm.updateTrackTx(tx, trackID, &track); err != nil {
-				log.Printf("Error updating track %s: %v", track.Name, err)
+				dm.Logger.Error("Error updating track", zap.String("track", track.Name), zap.Error(err))
 			}
 		} else if err == sql.ErrNoRows {
 			// Insert new track
 			if _, err := dm.insertTrackTx(tx, &track, artistStmt, genreStmt); err != nil {
-				log.Printf("Error inserting track %s: %v", track.Name, err)
+				dm.Logger.Error("Error inserting track", zap.String("track", track.Name), zap.Error(err))
 			}
 		} else {
-			log.Printf("Error checking track %s: %v", track.Name, err)
+			dm.Logger.Error("Error checking track", zap.String("track", track.Name), zap.Error(err))
 		}
 	}
 
@@ -651,11 +652,10 @@ func (dm *DatabaseManager) ValidateMigration(cacheDir string) (bool, []string) {
 		return false, issues
 	}
 
-	log.Printf("Migration validation successful: %d tracks, %d playlists, %d artists, %d albums",
-		stats.TrackCount, stats.PlaylistCount, stats.ArtistCount, stats.AlbumCount)
+	dm.Logger.Info("Migration validation successful", zap.Int64("tracks", stats.TrackCount), zap.Int64("playlists", stats.PlaylistCount), zap.Int64("artists", stats.ArtistCount), zap.Int64("albums", stats.AlbumCount))
 
 	if len(tracks) > 0 {
-		log.Printf("Sample search returned: %s by %s", tracks[0].Name, tracks[0].Artist)
+		dm.Logger.Info("Sample search returned", zap.String("track", tracks[0].Name), zap.String("artist", tracks[0].Artist))
 	}
 
 	return true, issues

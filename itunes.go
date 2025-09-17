@@ -9,7 +9,12 @@ import (
 
 	"itunes/database"
 	"itunes/itunes"
+	"itunes/logging"
+
+	"go.uber.org/zap"
 )
+
+var logger *zap.Logger
 
 func main() {
 	if len(os.Args) < 2 {
@@ -36,13 +41,19 @@ func main() {
 		return
 	}
 
+	var err error
+	logger, err = logging.InitLogger("info")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to initialize logger: %v\n", err)
+		os.Exit(1)
+	}
+	defer logger.Sync()
+
 	command := os.Args[1]
 
 	// Initialize database (now default mode)
-	if err := itunes.InitDatabase(); err != nil {
-		fmt.Printf("Error: Failed to initialize database: %v\n", err)
-		fmt.Println("Please ensure the database exists by running: itunes-migrate")
-		return
+	if err := itunes.InitDatabase(logger); err != nil {
+		logger.Fatal("Failed to initialize database", zap.Error(err))
 	}
 	defer itunes.CloseDatabase()
 
@@ -334,7 +345,7 @@ func handleAddStation(args []string) error {
 	}
 
 	// Get database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath)
+	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -371,7 +382,7 @@ func handleUpdateStation(args []string) error {
 	}
 
 	// Get database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath)
+	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -413,7 +424,7 @@ func handleDeleteStation(idStr string) error {
 	}
 
 	// Get database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath)
+	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -435,7 +446,7 @@ func handleImportStations(filename string) error {
 	}
 
 	// Get database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath)
+	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -446,7 +457,7 @@ func handleImportStations(filename string) error {
 
 func handleExportStations(filename string) error {
 	// Get database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath)
+	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -470,7 +481,7 @@ func handleExportStations(filename string) error {
 
 func handleListStations() error {
 	// Get database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath)
+	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}

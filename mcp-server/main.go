@@ -10,17 +10,25 @@ import (
 
 	"itunes/database"
 	"itunes/itunes"
+	"itunes/logging"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
+	"go.uber.org/zap"
 )
 
 func main() {
-	// Initialize database (now default mode)
-	if err := itunes.InitDatabase(); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: Failed to initialize database: %v\n", err)
-		fmt.Fprintln(os.Stderr, "Please ensure the database exists by running: itunes-migrate")
+	// Initialize logger
+	logger, err := logging.InitLogger("info")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: Failed to initialize logger: %v\n", err)
 		os.Exit(1)
+	}
+	defer logger.Sync()
+
+	// Initialize database (now default mode)
+	if err := itunes.InitDatabase(logger); err != nil {
+		logger.Fatal("Failed to initialize database", zap.Error(err))
 	}
 	defer itunes.CloseDatabase()
 
@@ -216,11 +224,6 @@ func main() {
 }
 
 func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if err := itunes.InitDatabase(); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to re-initialize database: %v", err)), nil
-	}
-	defer itunes.CloseDatabase()
-
 	query, err := request.RequireString("query")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid query parameter: %v", err)), nil
@@ -229,7 +232,8 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	// Search using database (now default)
 	tracks, err := itunes.SearchTracks(query)
 	if err != nil {
-		if errors.Is(err, itunes.ErrNoTracksFound) {
+		var itunesErr *itunes.ITunesError
+		if errors.As(err, &itunesErr) && itunesErr.Kind == itunes.ErrNoTracksFound {
 			return mcp.NewToolResultText("No tracks found matching the query."), nil
 		}
 		return mcp.NewToolResultError(fmt.Sprintf("Search failed: %v", err)), nil
@@ -244,11 +248,6 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 }
 
 func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if err := itunes.InitDatabase(); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to re-initialize database: %v", err)), nil
-	}
-	defer itunes.CloseDatabase()
-
 	// Get parameters - track_id is preferred, then track name as fallback
 	trackID := request.GetString("track_id", "")
 	playlist := request.GetString("playlist", "")
@@ -302,20 +301,15 @@ func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 
 	// Now migrate the refreshed data to the database
 	cacheDir := filepath.Join(os.TempDir(), "itunes-cache")
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath)
-	if err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to open database: %v", err)), nil
-	}
-	defer dm.Close()
 
 	// Migrate from the enhanced JSON file (or fallback to legacy)
-	err = dm.MigrateFromJSON(cacheDir, nil)
+	err = itunes.DBManager.MigrateFromJSON(cacheDir, nil)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to migrate data to database: %v", err)), nil
 	}
 
 	// Get database statistics
-	stats, err := dm.GetStats()
+	stats, err := itunes.DBManager.GetStats()
 	if err != nil {
 		return mcp.NewToolResultText("Library refresh and database update completed, but couldn't get statistics."), nil
 	}
@@ -331,11 +325,6 @@ func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 
 // Resource handlers for cache access
 func dbStatsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	if err := itunes.InitDatabase(); err != nil {
-		return nil, fmt.Errorf("failed to re-initialize database: %v", err)
-	}
-	defer itunes.CloseDatabase()
-
 	stats, err := itunes.GetDatabaseStats()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database stats: %w", err)
@@ -356,11 +345,6 @@ func dbStatsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp
 }
 
 func listPlaylistsHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if err := itunes.InitDatabase(); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to re-initialize database: %v", err)), nil
-	}
-	defer itunes.CloseDatabase()
-
 	playlists, err := itunes.ListPlaylists()
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list playlists: %v", err)), nil
@@ -395,11 +379,6 @@ func listPlaylistsHandler(ctx context.Context, request mcp.CallToolRequest) (*mc
 }
 
 func getPlaylistTracksHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if err := itunes.InitDatabase(); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to re-initialize database: %v", err)), nil
-	}
-	defer itunes.CloseDatabase()
-
 	playlist, err := request.RequireString("playlist")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid playlist parameter: %v", err)), nil
@@ -425,11 +404,6 @@ func getPlaylistTracksHandler(ctx context.Context, request mcp.CallToolRequest) 
 }
 
 func searchAdvancedHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if err := itunes.InitDatabase(); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to re-initialize database: %v", err)), nil
-	}
-	defer itunes.CloseDatabase()
-
 	query, err := request.RequireString("query")
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid query parameter: %v", err)), nil
@@ -484,7 +458,8 @@ func searchAdvancedHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 	// Search using database with filters
 	tracks, err := itunes.SearchTracksFromDatabase(query, filters)
 	if err != nil {
-		if errors.Is(err, itunes.ErrNoTracksFound) {
+		var itunesErr *itunes.ITunesError
+		if errors.As(err, &itunesErr) && itunesErr.Kind == itunes.ErrNoTracksFound {
 			return mcp.NewToolResultText("No tracks found matching the query and filters."), nil
 		}
 		return mcp.NewToolResultError(fmt.Sprintf("Advanced search failed: %v", err)), nil
@@ -532,11 +507,6 @@ func playStreamHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 }
 
 func searchStationsHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	if err := itunes.InitDatabase(); err != nil {
-		return mcp.NewToolResultError(fmt.Sprintf("Failed to re-initialize database: %v", err)), nil
-	}
-	defer itunes.CloseDatabase()
-
 	var params struct {
 		Query string `json:"query"`
 	}
@@ -570,11 +540,6 @@ func searchStationsHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 }
 
 func playlistsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	if err := itunes.InitDatabase(); err != nil {
-		return nil, fmt.Errorf("failed to re-initialize database: %v", err)
-	}
-	defer itunes.CloseDatabase()
-
 	playlists, err := itunes.ListPlaylists()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get playlists: %w", err)

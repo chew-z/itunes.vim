@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"go.uber.org/zap"
 )
 
 // TestMigrateFromJSON tests migration from JSON cache files
@@ -90,7 +92,7 @@ func TestMigrateFromJSON(t *testing.T) {
 		}
 
 		// Create database manager
-		dm, err := NewDatabaseManager(dbPath)
+		dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 		if err != nil {
 			t.Fatalf("Failed to create database: %v", err)
 		}
@@ -157,7 +159,7 @@ func TestMigrateFromJSON(t *testing.T) {
 
 		// Create new database
 		dbPath2 := filepath.Join(tmpDir, "test2.db")
-		dm, err := NewDatabaseManager(dbPath2)
+		dm, err := NewDatabaseManager(dbPath2, zap.NewNop())
 		if err != nil {
 			t.Fatalf("Failed to create database: %v", err)
 		}
@@ -218,7 +220,7 @@ func TestMigrateFromJSON(t *testing.T) {
 	t.Run("MissingCacheFiles", func(t *testing.T) {
 		nonExistentDir := filepath.Join(tmpDir, "nonexistent")
 		dbPath3 := filepath.Join(tmpDir, "test3.db")
-		dm, err := NewDatabaseManager(dbPath3)
+		dm, err := NewDatabaseManager(dbPath3, zap.NewNop())
 		if err != nil {
 			t.Fatalf("Failed to create database: %v", err)
 		}
@@ -236,7 +238,7 @@ func TestPopulateFromRefreshScript(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -336,7 +338,7 @@ func TestBatchOperations(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -422,7 +424,7 @@ func TestPlaylistOperations(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -574,7 +576,7 @@ func TestMigrationValidation(t *testing.T) {
 	}
 
 	// Create database and migrate
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -611,7 +613,7 @@ func BenchmarkBatchInsert(b *testing.B) {
 	tmpDir := b.TempDir()
 	dbPath := filepath.Join(tmpDir, "bench.db")
 
-	dm, err := NewDatabaseManager(dbPath)
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
 	if err != nil {
 		b.Fatalf("Failed to create database: %v", err)
 	}
