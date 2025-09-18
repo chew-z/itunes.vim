@@ -380,6 +380,8 @@ func (sm *SearchManager) executeSearchQuery(query string, args []interface{}) ([
 	defer rows.Close()
 
 	var tracks []Track
+	trackIDs := make([]int64, 0)
+
 	for rows.Next() {
 		track := Track{}
 		var relevanceScore float64
@@ -393,45 +395,66 @@ func (sm *SearchManager) executeSearchQuery(query string, args []interface{}) ([
 			return nil, fmt.Errorf("failed to scan track: %w", err)
 		}
 
-		// Store relevance score in Ranking for now (could add a separate field)
 		track.Ranking = relevanceScore
-
-		// Get playlist associations
-		playlists, err := sm.getTrackPlaylists(int(track.ID))
-		if err == nil {
-			track.Playlists = playlists
-		}
-
 		tracks = append(tracks, track)
+		trackIDs = append(trackIDs, track.ID)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("error iterating search results: %w", err)
+	}
+
+	if len(tracks) > 0 {
+		err := sm.fetchPlaylistsForTracks(tracks, trackIDs)
+		if err != nil {
+			// Log or handle error, but don't fail the whole search
+		}
 	}
 
 	return tracks, nil
 }
 
-// getTrackPlaylists retrieves playlist names for a track
-func (sm *SearchManager) getTrackPlaylists(trackID int) ([]string, error) {
-	rows, err := sm.DB.Query(`
-		SELECT p.name
-		FROM playlists p
-		JOIN playlist_tracks pt ON p.id = pt.playlist_id
-		WHERE pt.track_id = ?
+// fetchPlaylistsForTracks fetches all playlists for a slice of tracks.
+func (sm *SearchManager) fetchPlaylistsForTracks(tracks []Track, trackIDs []int64) error {
+	placeholders := strings.Repeat("?,", len(trackIDs)-1) + "?"
+	query := fmt.Sprintf(`
+		SELECT pt.track_id, p.name
+		FROM playlist_tracks pt
+		JOIN playlists p ON p.id = pt.playlist_id
+		WHERE pt.track_id IN (%s)
 		ORDER BY p.name
-	`, trackID)
+	`, placeholders)
+
+	args := make([]interface{}, len(trackIDs))
+	for i, id := range trackIDs {
+		args[i] = id
+	}
+
+	rows, err := sm.DB.Query(query, args...)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed to fetch playlists for tracks: %w", err)
 	}
 	defer rows.Close()
 
-	var playlists []string
+	trackPlaylistMap := make(map[int64][]string)
 	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err != nil {
-			return nil, err
+		var trackID int64
+		var playlistName string
+		if err := rows.Scan(&trackID, &playlistName); err != nil {
+			return err
 		}
-		playlists = append(playlists, name)
+		trackPlaylistMap[trackID] = append(trackPlaylistMap[trackID], playlistName)
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("error iterating playlist results: %w", err)
 	}
 
-	return playlists, nil
+	for i := range tracks {
+		if playlists, ok := trackPlaylistMap[tracks[i].ID]; ok {
+			tracks[i].Playlists = playlists
+		}
+	}
+
+	return nil
 }
 
 // generateCacheKey creates a unique key for search results

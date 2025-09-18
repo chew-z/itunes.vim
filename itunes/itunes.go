@@ -839,15 +839,18 @@ var (
 )
 
 func retryWithBackoff(fn func() error, maxRetries int) error {
+	var lastErr error
 	backoff := 100 * time.Millisecond
 	for i := 0; i < maxRetries; i++ {
 		if err := fn(); err == nil {
 			return nil
+		} else {
+			lastErr = err
 		}
 		time.Sleep(backoff)
 		backoff *= 2
 	}
-	return fmt.Errorf("failed after %d retries", maxRetries)
+	return fmt.Errorf("failed after %d retries, last error: %w", maxRetries, lastErr)
 }
 
 // InitDatabase initializes the SQLite database connection

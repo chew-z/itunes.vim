@@ -1106,6 +1106,25 @@ func (dm *DatabaseManager) GetRadioStationByID(id int64) (*RadioStation, error) 
 	return &station, nil
 }
 
+// validateStationURL validates that a station URL uses a supported protocol.
+func validateStationURL(url string) error {
+	if url == "" {
+		return nil // Allow empty URLs, handled by other logic
+	}
+	supportedProtocols := []string{"http://", "https://", "itmss://"}
+	isSupported := false
+	for _, protocol := range supportedProtocols {
+		if strings.HasPrefix(url, protocol) {
+			isSupported = true
+			break
+		}
+	}
+	if !isSupported {
+		return fmt.Errorf("unsupported URL protocol for URL: %s. Supported protocols are: %s", url, strings.Join(supportedProtocols, ", "))
+	}
+	return nil
+}
+
 // ImportRadioStations bulk imports radio stations from a slice
 func (dm *DatabaseManager) ImportRadioStations(stations []RadioStation) error {
 	tx, err := dm.DB.Begin()
@@ -1116,6 +1135,16 @@ func (dm *DatabaseManager) ImportRadioStations(stations []RadioStation) error {
 
 	successCount := 0
 	for _, station := range stations {
+		// Validate URL protocol
+		if err := validateStationURL(station.URL); err != nil {
+			dm.Logger.Warn("Skipping station with invalid URL", zap.String("station", station.Name), zap.String("url", station.URL), zap.Error(err))
+			continue
+		}
+		if err := validateStationURL(station.Homepage); err != nil {
+			dm.Logger.Warn("Skipping station with invalid Homepage URL", zap.String("station", station.Name), zap.String("url", station.Homepage), zap.Error(err))
+			continue
+		}
+
 		// Get or create genre (standardize to Title Case)
 		genreName := station.Genre
 		if genreName != "" {

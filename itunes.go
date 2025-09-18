@@ -344,12 +344,9 @@ func handleAddStation(args []string) error {
 		return fmt.Errorf("invalid URL: %w", err)
 	}
 
-	// Get database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
-	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+	if itunes.DBManager == nil {
+		return fmt.Errorf("database not initialized")
 	}
-	defer dm.Close()
 
 	station := &database.RadioStation{
 		Name:        name,
@@ -359,7 +356,7 @@ func handleAddStation(args []string) error {
 		Homepage:    flags["homepage"],
 	}
 
-	return dm.AddRadioStation(station)
+	return itunes.DBManager.AddRadioStation(station)
 }
 
 func handleUpdateStation(args []string) error {
@@ -381,15 +378,12 @@ func handleUpdateStation(args []string) error {
 		}
 	}
 
-	// Get database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
-	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+	if itunes.DBManager == nil {
+		return fmt.Errorf("database not initialized")
 	}
-	defer dm.Close()
 
 	// Get existing station
-	existingStation, err := dm.GetRadioStationByID(id)
+	existingStation, err := itunes.DBManager.GetRadioStationByID(id)
 	if err != nil {
 		return fmt.Errorf("failed to get station: %w", err)
 	}
@@ -414,7 +408,7 @@ func handleUpdateStation(args []string) error {
 		existingStation.Homepage = homepage
 	}
 
-	return dm.UpdateRadioStation(id, existingStation)
+	return itunes.DBManager.UpdateRadioStation(id, existingStation)
 }
 
 func handleDeleteStation(idStr string) error {
@@ -423,14 +417,11 @@ func handleDeleteStation(idStr string) error {
 		return fmt.Errorf("invalid station ID: %v", err)
 	}
 
-	// Get database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
-	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+	if itunes.DBManager == nil {
+		return fmt.Errorf("database not initialized")
 	}
-	defer dm.Close()
 
-	return dm.DeleteRadioStation(id)
+	return itunes.DBManager.DeleteRadioStation(id)
 }
 
 func handleImportStations(filename string) error {
@@ -445,26 +436,30 @@ func handleImportStations(filename string) error {
 		return fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
-	// Get database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
-	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+	// Validate stations before import
+	for _, station := range stations {
+		if err := validateStationURL(station.URL); err != nil {
+			return fmt.Errorf("invalid station '%s': %w", station.Name, err)
+		}
+		if err := validateStationURL(station.Homepage); err != nil {
+			return fmt.Errorf("invalid station '%s': %w", station.Name, err)
+		}
 	}
-	defer dm.Close()
 
-	return dm.ImportRadioStations(stations)
+	if itunes.DBManager == nil {
+		return fmt.Errorf("database not initialized")
+	}
+
+	return itunes.DBManager.ImportRadioStations(stations)
 }
 
 func handleExportStations(filename string) error {
-	// Get database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
-	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+	if itunes.DBManager == nil {
+		return fmt.Errorf("database not initialized")
 	}
-	defer dm.Close()
 
 	// Get all stations
-	stations, err := dm.SearchRadioStations("", &database.RadioStationFilters{Limit: 1000})
+	stations, err := itunes.DBManager.SearchRadioStations("", &database.RadioStationFilters{Limit: 1000})
 	if err != nil {
 		return fmt.Errorf("failed to get stations: %w", err)
 	}
@@ -480,15 +475,12 @@ func handleExportStations(filename string) error {
 }
 
 func handleListStations() error {
-	// Get database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
-	if err != nil {
-		return fmt.Errorf("failed to open database: %w", err)
+	if itunes.DBManager == nil {
+		return fmt.Errorf("database not initialized")
 	}
-	defer dm.Close()
 
 	// Get all stations
-	stations, err := dm.SearchRadioStations("", &database.RadioStationFilters{Limit: 100})
+	stations, err := itunes.DBManager.SearchRadioStations("", &database.RadioStationFilters{Limit: 100})
 	if err != nil {
 		return fmt.Errorf("failed to get stations: %w", err)
 	}
