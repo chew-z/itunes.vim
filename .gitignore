@@ -28,7 +28,10 @@ repomix-output.xml
 
 .codanna/**
 .codannaignore
+# local folder
 .fastembed_cache/**
+# link to global
+.fastembed_cache
 
 run_*.sh
 run_format.sh

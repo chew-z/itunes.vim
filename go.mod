@@ -3,7 +3,7 @@ module itunes
 go 1.24.5
 
 require (
-	github.com/mark3labs/mcp-go v0.36.0
+	github.com/mark3labs/mcp-go v0.41.0
 	go.uber.org/zap v1.27.0
 	modernc.org/sqlite v1.27.0
 )
