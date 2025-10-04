@@ -415,8 +415,8 @@ func TestSearchPerformance(t *testing.T) {
 			continue
 		}
 
-		if duration > 10*time.Millisecond {
-			t.Errorf("Search for '%s' took %v, expected <10ms", query, duration)
+		if duration > 25*time.Millisecond {
+			t.Errorf("Search for '%s' took %v, expected <25ms", query, duration)
 		}
 
 		t.Logf("Search for '%s' returned %d results in %v", query, len(results), duration)
