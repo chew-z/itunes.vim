@@ -15,151 +15,11 @@ import (
 	"time"
 
 	"itunes/database"
+	"itunes/itunes/model"
 
 	"go.uber.org/zap"
 )
 
-// Track describes one track from the script's output
-type Track struct {
-	ID           string   `json:"id"`
-	PersistentID string   `json:"persistent_id,omitempty"` // Apple Music persistent ID (Phase 2)
-	Name         string   `json:"name"`
-	Album        string   `json:"album"`
-	Collection   string   `json:"collection"` // Primary playlist name or album if not in a playlist
-	Artist       string   `json:"artist"`
-	Playlists    []string `json:"playlists"`            // All playlists containing this track
-	Genre        string   `json:"genre,omitempty"`      // Phase 2: Track genre
-	Rating       int      `json:"rating,omitempty"`     // Phase 2: Track rating (0-100)
-	Starred      bool     `json:"starred,omitempty"`    // Phase 2: Loved/starred status
-	IsStreaming  bool     `json:"is_streaming"`         // Streaming track detection
-	Kind         string   `json:"kind,omitempty"`       // Track type (e.g., "Internet audio stream")
-	StreamURL    string   `json:"stream_url,omitempty"` // Stream URL for streaming tracks
-}
-
-// PlaylistData represents playlist metadata with persistent ID (Phase 2)
-type PlaylistData struct {
-	ID          string `json:"id"` // Persistent ID
-	Name        string `json:"name"`
-	SpecialKind string `json:"special_kind"` // "none" for user playlists
-	TrackCount  int    `json:"track_count"`
-	Genre       string `json:"genre,omitempty"`
-}
-
-// Station represents an Apple Music radio station
-type Station struct {
-	ID          int64    `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
-	URL         string   `json:"url"`
-	Genre       string   `json:"genre"`
-	Homepage    string   `json:"homepage,omitempty"` // https:// web URL for browser access
-	Keywords    []string `json:"keywords"`           // For backward compatibility
-}
-
-// StationSearchResult represents the result of a station search
-type StationSearchResult struct {
-	Status   string    `json:"status"`
-	Query    string    `json:"query"`
-	Stations []Station `json:"stations"`
-	Count    int       `json:"count"`
-	Message  string    `json:"message,omitempty"`
-}
-
-// RefreshStats contains statistics from a library refresh operation
-type RefreshStats struct {
-	TotalTracks    int `json:"total_tracks"`
-	TotalPlaylists int `json:"total_playlists"`
-	ProcessingTime int `json:"processing_time_ms"`
-}
-
-// RefreshData contains the tracks and playlists from a refresh operation
-type RefreshData struct {
-	Tracks    []Track        `json:"tracks"`
-	Playlists []PlaylistData `json:"playlists"`
-	Stats     RefreshStats   `json:"stats"`
-}
-
-// RefreshResponse represents the complete response from the refresh script
-type RefreshResponse struct {
-	Status  string                 `json:"status"`
-	Message string                 `json:"message"`
-	Data    *RefreshData           `json:"data"`
-	Error   string                 `json:"error,omitempty"`
-	Details map[string]interface{} `json:"details,omitempty"`
-}
-
-// NowPlayingTrack contains current track information with playback details
-type NowPlayingTrack struct {
-	ID              string `json:"id"`
-	Name            string `json:"name"`
-	Artist          string `json:"artist"`
-	Album           string `json:"album"`
-	Position        string `json:"position"`
-	Duration        string `json:"duration"`
-	PositionSeconds int    `json:"position_seconds"`
-	DurationSeconds int    `json:"duration_seconds"`
-	IsStreaming     bool   `json:"is_streaming"`
-	Kind            string `json:"kind,omitempty"`
-	StreamURL       string `json:"stream_url,omitempty"`
-}
-
-// jsNowPlayingResponse represents the raw response from JavaScript
-type jsNowPlayingResponse struct {
-	Status  string           `json:"status"`
-	Track   *NowPlayingTrack `json:"track,omitempty"`
-	Display string           `json:"display"`
-	Message string           `json:"message"`
-}
-
-// StreamingTrack contains streaming track information
-type StreamingTrack struct {
-	ID             string `json:"id"`
-	Name           string `json:"name"`
-	StreamURL      string `json:"stream_url"`
-	Kind           string `json:"kind"`
-	Elapsed        string `json:"elapsed"`
-	ElapsedSeconds int    `json:"elapsed_seconds"`
-}
-
-// NowPlayingStatus represents the current playback status
-type NowPlayingStatus struct {
-	Status  string           `json:"status"`           // "playing", "paused", "stopped", "error", "streaming", "streaming_paused"
-	Track   *NowPlayingTrack `json:"track,omitempty"`  // For local tracks
-	Stream  *StreamingTrack  `json:"stream,omitempty"` // For streaming tracks
-	Display string           `json:"display"`          // Formatted display string
-	Message string           `json:"message"`
-}
-
-// PlayResult contains the result of a play operation with current track info
-type PlayResult struct {
-	Success    bool              `json:"success"`
-	Message    string            `json:"message"`
-	NowPlaying *NowPlayingStatus `json:"now_playing,omitempty"`
-}
-
-// EQStatus represents the state of the Apple Music Equalizer.
-type EQStatus struct {
-	Enabled          bool     `json:"enabled"`
-	CurrentPreset    *string  `json:"current_preset"` // Use pointer to handle null when disabled
-	AvailablePresets []string `json:"available_presets"`
-	Message          string   `json:"message,omitempty"` // Optional informational message
-}
-
-// AudioOutput describes the current audio output device.
-type AudioOutput struct {
-	OutputType string `json:"output_type"` // "local" or "airplay"
-	DeviceName string `json:"device_name"`
-	Error      string `json:"error,omitempty"`
-}
-
-// AirPlayDevice represents an AirPlay-capable audio output device.
-type AirPlayDevice struct {
-	Name        string `json:"name"`
-	Kind        string `json:"kind"`
-	Selected    bool   `json:"selected"`
-	SoundVolume int    `json:"sound_volume"`
-	Error       string `json:"error,omitempty"`
-}
 
 // runScript executes a JXA script and returns its standard output.
 func runScript(ctx context.Context, scriptContent string, args []string) ([]byte, error) {
@@ -202,7 +62,7 @@ func runScript(ctx context.Context, scriptContent string, args []string) ([]byte
 }
 
 // GetEQStatus retrieves the current equalizer status from Apple Music.
-func GetEQStatus() (*EQStatus, error) {
+func GetEQStatus() (*model.EQStatus, error) {
 	// First, check if audio is being routed through AirPlay.
 	audioOutput, err := GetAudioOutput()
 	if err != nil {
@@ -225,7 +85,7 @@ func GetEQStatus() (*EQStatus, error) {
 		return nil, &ITunesError{Op: "GetEQStatus: run script", Kind: ErrJXAScript, Err: err}
 	}
 
-	var status EQStatus
+	var status model.EQStatus
 	if err := json.Unmarshal(output, &status); err != nil {
 		return nil, &ITunesError{Op: "GetEQStatus: unmarshal json", Kind: ErrJXAScript, Err: err}
 	}
@@ -234,7 +94,7 @@ func GetEQStatus() (*EQStatus, error) {
 }
 
 // GetAudioOutput retrieves the current audio output device information.
-func GetAudioOutput() (*AudioOutput, error) {
+func GetAudioOutput() (*model.AudioOutput, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -243,7 +103,7 @@ func GetAudioOutput() (*AudioOutput, error) {
 		return nil, &ITunesError{Op: "GetAudioOutput: run script", Kind: ErrJXAScript, Err: err}
 	}
 
-	var audioOutput AudioOutput
+	var audioOutput model.AudioOutput
 	if err := json.Unmarshal(output, &audioOutput); err != nil {
 		return nil, &ITunesError{Op: "GetAudioOutput: unmarshal json", Kind: ErrJXAScript, Err: err}
 	}
@@ -261,7 +121,7 @@ func GetAudioOutput() (*AudioOutput, error) {
 
 // SetEQStatus sets the equalizer state in Apple Music.
 // It can enable/disable the EQ and/or set a specific preset.
-func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
+func SetEQStatus(preset string, enabled *bool) (*model.EQStatus, error) {
 	// First, check if audio is being routed through AirPlay.
 	audioOutput, err := GetAudioOutput()
 	if err != nil {
@@ -283,7 +143,7 @@ func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
 		}
 
 		// Return current status with informative message about AirPlay limitation
-		return &EQStatus{
+		return &model.EQStatus{
 			Enabled:          currentStatus.Enabled,
 			CurrentPreset:    currentStatus.CurrentPreset,
 			AvailablePresets: currentStatus.AvailablePresets,
@@ -314,7 +174,7 @@ func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
 		return nil, &ITunesError{Op: "SetEQStatus: run script", Kind: ErrJXAScript, Err: err}
 	}
 
-	var status EQStatus
+	var status model.EQStatus
 	if err := json.Unmarshal(output, &status); err != nil {
 		// Check for a script-level error response
 		var scriptError struct {
@@ -335,7 +195,7 @@ func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
 }
 
 // ListAirPlayDevices retrieves a list of all available AirPlay devices.
-func ListAirPlayDevices() ([]AirPlayDevice, error) {
+func ListAirPlayDevices() ([]model.AirPlayDevice, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -344,7 +204,7 @@ func ListAirPlayDevices() ([]AirPlayDevice, error) {
 		return nil, &ITunesError{Op: "ListAirPlayDevices: run script", Kind: ErrJXAScript, Err: err}
 	}
 
-	var devices []AirPlayDevice
+	var devices []model.AirPlayDevice
 	if err := json.Unmarshal(output, &devices); err != nil {
 		// Check for a script-level error response
 		var scriptError struct {
@@ -364,7 +224,7 @@ func ListAirPlayDevices() ([]AirPlayDevice, error) {
 }
 
 // SetAirPlayDevice sets the active AirPlay device.
-func SetAirPlayDevice(deviceName string) (*AirPlayDevice, error) {
+func SetAirPlayDevice(deviceName string) (*model.AirPlayDevice, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -373,7 +233,7 @@ func SetAirPlayDevice(deviceName string) (*AirPlayDevice, error) {
 		return nil, &ITunesError{Op: "SetAirPlayDevice: run script", Kind: ErrJXAScript, Err: err}
 	}
 
-	var device AirPlayDevice
+	var device model.AirPlayDevice
 	if err := json.Unmarshal(output, &device); err != nil {
 		return nil, &ITunesError{Op: "SetAirPlayDevice: unmarshal json", Kind: ErrJXAScript, Err: err}
 	}
@@ -589,9 +449,9 @@ scriptComplete:
 	// Write legacy cache file (tracks only) for backward compatibility
 	if response.Data != nil && response.Data.Tracks != nil {
 		// Convert JSONTrack to Track for legacy format
-		legacyTracks := make([]Track, len(response.Data.Tracks))
+		legacyTracks := make([]model.Track, len(response.Data.Tracks))
 		for i, jsonTrack := range response.Data.Tracks {
-			legacyTracks[i] = Track{
+			legacyTracks[i] = model.Track{
 				ID:           jsonTrack.PersistentID, // Use persistent ID as the main ID
 				PersistentID: jsonTrack.PersistentID,
 				Name:         jsonTrack.Name,
@@ -623,8 +483,8 @@ scriptComplete:
 }
 
 // GetNowPlaying runs the embedded iTunes_Now_Playing.js script to get current playback status
-func GetNowPlaying() (*NowPlayingStatus, error) {
-	var status *NowPlayingStatus
+func GetNowPlaying() (*model.NowPlayingStatus, error) {
+	var status *model.NowPlayingStatus
 	var err error
 
 	err = retryWithBackoff(func() error {
@@ -639,7 +499,7 @@ func GetNowPlaying() (*NowPlayingStatus, error) {
 	return status, nil
 }
 
-func getNowPlayingAttempt() (*NowPlayingStatus, error) {
+func getNowPlayingAttempt() (*model.NowPlayingStatus, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -677,13 +537,13 @@ func getNowPlayingAttempt() (*NowPlayingStatus, error) {
 	}
 
 	// First parse the raw JavaScript response
-	var jsResponse jsNowPlayingResponse
+	var jsResponse model.JsNowPlayingResponse
 	if err := json.Unmarshal(responseJSON, &jsResponse); err != nil {
 		return nil, &ITunesError{Op: "GetNowPlaying: unmarshal json", Kind: ErrJXAScript, Err: err}
 	}
 
 	// Convert to appropriate response structure
-	status := &NowPlayingStatus{
+	status := &model.NowPlayingStatus{
 		Display: jsResponse.Display,
 		Message: jsResponse.Message,
 	}
@@ -701,7 +561,7 @@ func getNowPlayingAttempt() (*NowPlayingStatus, error) {
 		}
 
 		// Convert to StreamingTrack
-		status.Stream = &StreamingTrack{
+		status.Stream = &model.StreamingTrack{
 			ID:             jsResponse.Track.ID,
 			Name:           jsResponse.Track.Name,
 			StreamURL:      jsResponse.Track.StreamURL,
@@ -722,11 +582,11 @@ func getNowPlayingAttempt() (*NowPlayingStatus, error) {
 }
 
 // PlayPlaylistTrackWithStatus runs PlayPlaylistTrack and returns the result with current track info
-func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID string) (*PlayResult, error) {
+func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID string) (*model.PlayResult, error) {
 	// First, attempt to play the track
 	err := PlayPlaylistTrack(playlistName, albumName, trackName, trackID)
 
-	result := &PlayResult{
+	result := &model.PlayResult{
 		Success: err == nil,
 	}
 
@@ -765,7 +625,7 @@ func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID str
 }
 
 // PlayStreamURL plays a stream from any supported streaming URL (itmss://, https://, http://, etc.)
-func PlayStreamURL(streamURL string) (*PlayResult, error) {
+func PlayStreamURL(streamURL string) (*model.PlayResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
@@ -789,7 +649,7 @@ func PlayStreamURL(streamURL string) (*PlayResult, error) {
 	err = cmd.Run()
 	response := strings.TrimSpace(stdout.String())
 
-	result := &PlayResult{
+	result := &model.PlayResult{
 		Success: err == nil && strings.HasPrefix(response, "OK:"),
 	}
 
@@ -886,7 +746,7 @@ func CloseDatabase() {
 }
 
 // SearchTracksFromDatabase searches tracks using the SQLite database with FTS5
-func SearchTracksFromDatabase(query string, filters *database.SearchFilters) ([]Track, error) {
+func SearchTracksFromDatabase(query string, filters *database.SearchFilters) ([]model.Track, error) {
 	if DBManager == nil {
 		return nil, &ITunesError{Op: "SearchTracksFromDatabase", Kind: ErrDatabase, Err: errors.New("database not initialized")}
 	}
@@ -905,9 +765,9 @@ func SearchTracksFromDatabase(query string, filters *database.SearchFilters) ([]
 	}
 
 	// Convert database tracks to API tracks
-	tracks := make([]Track, len(dbTracks))
+	tracks := make([]model.Track, len(dbTracks))
 	for i, dbTrack := range dbTracks {
-		tracks[i] = Track{
+		tracks[i] = model.Track{
 			ID:           dbTrack.PersistentID, // Use persistent ID as the main ID
 			PersistentID: dbTrack.PersistentID,
 			Name:         dbTrack.Name,
@@ -928,7 +788,7 @@ func SearchTracksFromDatabase(query string, filters *database.SearchFilters) ([]
 }
 
 // GetTrackByPersistentID retrieves a single track by its persistent ID
-func GetTrackByPersistentID(persistentID string) (*Track, error) {
+func GetTrackByPersistentID(persistentID string) (*model.Track, error) {
 	if DBManager == nil {
 		return nil, &ITunesError{Op: "GetTrackByPersistentID", Kind: ErrDatabase, Err: errors.New("database not initialized")}
 	}
@@ -942,7 +802,7 @@ func GetTrackByPersistentID(persistentID string) (*Track, error) {
 		return nil, &ITunesError{Op: "GetTrackByPersistentID", Kind: ErrNoTracksFound, Err: fmt.Errorf("track with persistent ID '%s' not found", persistentID)}
 	}
 
-	track := &Track{
+	track := &model.Track{
 		ID:           dbTrack.PersistentID,
 		PersistentID: dbTrack.PersistentID,
 		Name:         dbTrack.Name,
@@ -962,7 +822,7 @@ func GetTrackByPersistentID(persistentID string) (*Track, error) {
 }
 
 // GetPlaylistTracks retrieves all tracks in a playlist
-func GetPlaylistTracks(playlistIdentifier string, usePlaylistID bool) ([]Track, error) {
+func GetPlaylistTracks(playlistIdentifier string, usePlaylistID bool) ([]model.Track, error) {
 	if DBManager == nil {
 		return nil, &ITunesError{Op: "GetPlaylistTracks", Kind: ErrDatabase, Err: errors.New("database not initialized")}
 	}
@@ -972,9 +832,9 @@ func GetPlaylistTracks(playlistIdentifier string, usePlaylistID bool) ([]Track, 
 		return nil, &ITunesError{Op: "GetPlaylistTracks: get from db", Kind: ErrDatabase, Err: err}
 	}
 
-	tracks := make([]Track, len(dbTracks))
+	tracks := make([]model.Track, len(dbTracks))
 	for i, dbTrack := range dbTracks {
-		tracks[i] = Track{
+		tracks[i] = model.Track{
 			ID:           dbTrack.PersistentID,
 			PersistentID: dbTrack.PersistentID,
 			Name:         dbTrack.Name,
@@ -1019,7 +879,7 @@ func ListPlaylists() ([]database.Playlist, error) {
 }
 
 // SearchTracks is the main search function using database
-func SearchTracks(query string) ([]Track, error) {
+func SearchTracks(query string) ([]model.Track, error) {
 	if DBManager == nil {
 		return nil, &ITunesError{Op: "SearchTracks", Kind: ErrDatabase, Err: errors.New("database not initialized - please run InitDatabase() first")}
 	}
@@ -1027,9 +887,9 @@ func SearchTracks(query string) ([]Track, error) {
 }
 
 // SearchStations searches for radio stations in the database
-func SearchStations(query string) (*StationSearchResult, error) {
+func SearchStations(query string) (*model.StationSearchResult, error) {
 	if DBManager == nil {
-		return &StationSearchResult{
+		return &model.StationSearchResult{
 			Status:  "error",
 			Query:   query,
 			Count:   0,
@@ -1043,7 +903,7 @@ func SearchStations(query string) (*StationSearchResult, error) {
 
 	stations, err := DBManager.SearchRadioStations(query, filters)
 	if err != nil {
-		return &StationSearchResult{
+		return &model.StationSearchResult{
 			Status:  "error",
 			Query:   query,
 			Count:   0,
@@ -1052,9 +912,9 @@ func SearchStations(query string) (*StationSearchResult, error) {
 	}
 
 	// Convert database stations to API stations
-	var apiStations []Station
+	var apiStations []model.Station
 	for _, dbStation := range stations {
-		apiStation := Station{
+		apiStation := model.Station{
 			ID:          dbStation.ID,
 			Name:        dbStation.Name,
 			Description: dbStation.Description,
@@ -1066,7 +926,7 @@ func SearchStations(query string) (*StationSearchResult, error) {
 		apiStations = append(apiStations, apiStation)
 	}
 
-	result := &StationSearchResult{
+	result := &model.StationSearchResult{
 		Status:   "success",
 		Query:    query,
 		Stations: apiStations,

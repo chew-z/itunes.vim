@@ -2,6 +2,7 @@ package itunes
 
 import (
 	"encoding/json"
+	"itunes/itunes/model"
 	"os"
 	"path/filepath"
 	"testing"
@@ -64,7 +65,7 @@ func TestRefreshResponseParsing(t *testing.T) {
 		}
 	}`
 
-	var response RefreshResponse
+	var response model.RefreshResponse
 	err := json.Unmarshal([]byte(mockResponse), &response)
 	if err != nil {
 		t.Fatalf("Failed to parse refresh response: %v", err)
@@ -129,7 +130,7 @@ func TestRefreshResponseParsing(t *testing.T) {
 // TestBackwardCompatibility tests that the new structure maintains backward compatibility
 func TestBackwardCompatibility(t *testing.T) {
 	// Create a track with minimal fields (backward compatible)
-	track := Track{
+	track := model.Track{
 		ID:         "12345",
 		Name:       "Test Track",
 		Album:      "Test Album",
@@ -144,7 +145,7 @@ func TestBackwardCompatibility(t *testing.T) {
 		t.Fatalf("Failed to marshal track: %v", err)
 	}
 
-	var parsedTrack Track
+	var parsedTrack model.Track
 	err = json.Unmarshal(data, &parsedTrack)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal track: %v", err)
@@ -176,7 +177,7 @@ func TestErrorResponse(t *testing.T) {
 		}
 	}`
 
-	var response RefreshResponse
+	var response model.RefreshResponse
 	err := json.Unmarshal([]byte(mockErrorResponse), &response)
 	if err != nil {
 		t.Fatalf("Failed to parse error response: %v", err)
@@ -208,7 +209,7 @@ func TestEmptyLibrary(t *testing.T) {
 		}
 	}`
 
-	var response RefreshResponse
+	var response model.RefreshResponse
 	err := json.Unmarshal([]byte(mockEmptyResponse), &response)
 	if err != nil {
 		t.Fatalf("Failed to parse empty library response: %v", err)
@@ -228,9 +229,9 @@ func TestEmptyLibrary(t *testing.T) {
 // TestLargeLibraryResponse tests handling of large library with many tracks
 func TestLargeLibraryResponse(t *testing.T) {
 	// Create a response with many tracks
-	var tracks []Track
+	var tracks []model.Track
 	for i := 0; i < 1000; i++ {
-		tracks = append(tracks, Track{
+		tracks = append(tracks, model.Track{
 			ID:           generateMockPersistentID(i),
 			PersistentID: generateMockPersistentID(i),
 			Name:         "Track " + string(rune(i)),
@@ -244,12 +245,12 @@ func TestLargeLibraryResponse(t *testing.T) {
 		})
 	}
 
-	response := RefreshResponse{
+	response := model.RefreshResponse{
 		Status: "success",
-		Data: &RefreshData{
+		Data: &model.RefreshData{
 			Tracks:    tracks,
-			Playlists: []PlaylistData{},
-			Stats: RefreshStats{
+			Playlists: []model.PlaylistData{},
+			Stats: model.RefreshStats{
 				TotalTracks:    1000,
 				TotalPlaylists: 0,
 				ProcessingTime: 100,
@@ -267,7 +268,7 @@ func TestLargeLibraryResponse(t *testing.T) {
 
 	// Test unmarshaling performance
 	start = time.Now()
-	var parsedResponse RefreshResponse
+	var parsedResponse model.RefreshResponse
 	err = json.Unmarshal(data, &parsedResponse)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal large response: %v", err)
@@ -298,7 +299,7 @@ func TestPlaylistDataParsing(t *testing.T) {
 		"genre": "Mixed"
 	}`
 
-	var playlist PlaylistData
+	var playlist model.PlaylistData
 	err := json.Unmarshal([]byte(mockPlaylist), &playlist)
 	if err != nil {
 		t.Fatalf("Failed to parse playlist data: %v", err)
@@ -323,7 +324,7 @@ func TestPlaylistDataParsing(t *testing.T) {
 
 // TestTrackWithAllFields tests a track with all enhanced fields populated
 func TestTrackWithAllFields(t *testing.T) {
-	track := Track{
+	track := model.Track{
 		ID:           "ABCD1234567890EF",
 		PersistentID: "ABCD1234567890EF",
 		Name:         "Take Five",
@@ -342,7 +343,7 @@ func TestTrackWithAllFields(t *testing.T) {
 		t.Fatalf("Failed to marshal track: %v", err)
 	}
 
-	var parsedTrack Track
+	var parsedTrack model.Track
 	err = json.Unmarshal(data, &parsedTrack)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal track: %v", err)
@@ -380,7 +381,7 @@ func TestCacheFileCreation(t *testing.T) {
 	}
 
 	// Create test tracks
-	tracks := []Track{
+	tracks := []model.Track{
 		{
 			ID:           "TEST123",
 			PersistentID: "TEST123",
@@ -410,7 +411,7 @@ func TestCacheFileCreation(t *testing.T) {
 		t.Fatalf("Failed to read cache file: %v", err)
 	}
 
-	var cachedTracks []Track
+	var cachedTracks []model.Track
 	err = json.Unmarshal(data, &cachedTracks)
 	if err != nil {
 		t.Fatalf("Failed to unmarshal cached tracks: %v", err)
