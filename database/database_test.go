@@ -2,10 +2,12 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"math/rand"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -477,6 +479,53 @@ func TestVacuum(t *testing.T) {
 	}
 	if stats.TrackCount != 50 {
 		t.Errorf("Expected 50 tracks after vacuum, got %d", stats.TrackCount)
+	}
+}
+
+// TestErrorHandling tests database error conditions
+func TestErrorHandling(t *testing.T) {
+	tmpDir := t.TempDir()
+	dbPath := filepath.Join(tmpDir, "test.db")
+
+	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	if err != nil {
+		t.Fatalf("Failed to create database manager: %v", err)
+	}
+	defer dm.Close()
+
+	// Test inserting a duplicate track
+	track := &Track{
+		PersistentID: "DUPLICATE_ID",
+		Name:         "Test Track",
+		Artist:       "Test Artist",
+	}
+
+	// First insert should succeed
+	if err := dm.InsertTrack(track); err != nil {
+		t.Fatalf("First insert failed: %v", err)
+	}
+
+	// Second insert with the same PersistentID should fail
+	err = dm.InsertTrack(track)
+	if err == nil {
+		t.Fatal("Expected error when inserting duplicate persistent ID, but got nil")
+	}
+
+	// Verify the error is a unique constraint error
+	// Note: The exact error message can vary depending on the SQLite driver
+	if !strings.Contains(err.Error(), "UNIQUE constraint failed") {
+		t.Errorf("Expected a unique constraint error, but got: %v", err)
+	}
+
+	// Test retrieving a non-existent track
+	_, err = dm.GetTrackByPersistentID("NON_EXISTENT_ID")
+	if err == nil {
+		t.Fatal("Expected error when getting non-existent track, but got nil")
+	}
+
+	// Check for sql.ErrNoRows
+	if !errors.Is(err, sql.ErrNoRows) {
+		t.Errorf("Expected sql.ErrNoRows, but got: %v", err)
 	}
 }
 

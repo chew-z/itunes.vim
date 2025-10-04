@@ -19,6 +19,9 @@ import (
 	"go.uber.org/zap"
 )
 
+// execCommand is a package-level variable for mocking exec.CommandContext in tests.
+var execCommand = exec.CommandContext
+
 // Track describes one track from the script's output
 type Track struct {
 	ID           string   `json:"id"`
@@ -180,7 +183,7 @@ func runScript(ctx context.Context, scriptContent string, args []string) ([]byte
 		cmdArgs = append(cmdArgs, args...)
 	}
 
-	cmd := exec.CommandContext(ctx, "osascript", cmdArgs...)
+	cmd := execCommand(ctx, "osascript", cmdArgs...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -427,7 +430,7 @@ func PlayPlaylistTrack(playlistName, albumName, trackName, trackID string) error
 	// Always pass track ID (empty string if not provided) - script prioritizes this
 	args = append(args, trackID)
 
-	cmd := exec.CommandContext(ctx, "osascript", args...)
+	cmd := execCommand(ctx, "osascript", args...)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -514,7 +517,7 @@ func RefreshLibraryCache() error {
 	fmt.Printf("🎵 Extracting music library from Apple Music app")
 	fmt.Printf("\n   This may take 1-3 minutes for large libraries")
 
-	cmd := exec.CommandContext(ctx, "osascript", "-l", "JavaScript", tempFile.Name())
+	cmd := execCommand(ctx, "osascript", "-l", "JavaScript", tempFile.Name())
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -655,7 +658,7 @@ func getNowPlayingAttempt() (*NowPlayingStatus, error) {
 	}
 	tempFile.Close()
 
-	cmd := exec.CommandContext(ctx, "osascript", "-l", "JavaScript", tempFile.Name())
+	cmd := execCommand(ctx, "osascript", "-l", "JavaScript", tempFile.Name())
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -781,7 +784,7 @@ func PlayStreamURL(streamURL string) (*PlayResult, error) {
 	}
 	tempFile.Close()
 
-	cmd := exec.CommandContext(ctx, "osascript", tempFile.Name(), streamURL)
+	cmd := execCommand(ctx, "osascript", tempFile.Name(), streamURL)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

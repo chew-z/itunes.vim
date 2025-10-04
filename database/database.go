@@ -302,7 +302,7 @@ func (dm *DatabaseManager) GetTrackByPersistentID(persistentID string) (*Track, 
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil
+			return nil, err
 		}
 		return nil, fmt.Errorf("failed to query track: %w", err)
 	}
