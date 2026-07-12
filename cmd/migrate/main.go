@@ -108,27 +108,28 @@ func progressReporter(verbose bool) database.ProgressCallback {
 			len(progress.Errors))
 
 		if progress.ProcessedTracks >= progress.TotalTracks {
-			fmt.Println() // New line after completion
-
-			// Print summary
-			duration := time.Since(progress.StartTime)
-			fmt.Printf("\nMigration completed in %s\n", duration.Round(time.Second))
-
-			if len(progress.Errors) > 0 {
-				fmt.Printf("\nEncountered %d errors during migration:\n", len(progress.Errors))
-				if verbose {
-					for i, err := range progress.Errors {
-						if i >= 10 && !verbose {
-							fmt.Printf("  ... and %d more errors\n", len(progress.Errors)-10)
-							break
-						}
-						fmt.Printf("  - %v\n", err)
-					}
-				} else {
-					fmt.Println("  Run with -verbose to see error details")
-				}
-			}
+			printMigrationSummary(progress, verbose)
 		}
+	}
+}
+
+func printMigrationSummary(progress database.MigrationProgress, verbose bool) {
+	fmt.Println()
+	fmt.Printf("\nMigration completed in %s\n", time.Since(progress.StartTime).Round(time.Second))
+	if len(progress.Errors) == 0 {
+		return
+	}
+	fmt.Printf("\nEncountered %d errors during migration:\n", len(progress.Errors))
+	if !verbose {
+		fmt.Println("  Run with -verbose to see error details")
+		return
+	}
+	for i, err := range progress.Errors {
+		if i >= 10 && !verbose {
+			fmt.Printf("  ... and %d more errors\n", len(progress.Errors)-10)
+			break
+		}
+		fmt.Printf("  - %v\n", err)
 	}
 }
 
@@ -275,76 +276,75 @@ func migrateFromScript() error {
 // analyzeCache analyzes cache files without migrating
 func analyzeCache(cacheDir string) error {
 	fmt.Println("Analyzing cache files...")
-
-	// Try enhanced format first
-	enhancedPath := filepath.Join(cacheDir, "library_enhanced.json")
-	if data, err := os.ReadFile(enhancedPath); err == nil {
-		var response database.RefreshResponse
-		if err := json.Unmarshal(data, &response); err == nil {
-			fmt.Println("\nEnhanced Library Cache:")
-			fmt.Printf("  Status: %s\n", response.Status)
-			fmt.Printf("  Tracks: %d\n", len(response.Data.Tracks))
-			fmt.Printf("  Playlists: %d\n", len(response.Data.Playlists))
-			fmt.Printf("  Refresh Time: %s\n", response.Data.Stats.RefreshTime)
-
-			// Sample tracks
-			fmt.Println("\nSample Tracks:")
-			for i, track := range response.Data.Tracks {
-				if i >= 5 {
-					break
-				}
-				fmt.Printf("  - %s by %s (ID: %s)\n", track.Name, track.Artist, track.PersistentID)
-			}
-
-			// Sample playlists
-			fmt.Println("\nSample Playlists:")
-			for i, playlist := range response.Data.Playlists {
-				if i >= 5 {
-					break
-				}
-				fmt.Printf("  - %s (%d tracks, ID: %s)\n", playlist.Name, playlist.TrackCount, playlist.ID)
-			}
-
-			return nil
-		}
+	if printEnhancedCache(filepath.Join(cacheDir, "library_enhanced.json")) {
+		return nil
 	}
-
-	// Try regular format
-	libraryPath := filepath.Join(cacheDir, "library.json")
-	if data, err := os.ReadFile(libraryPath); err == nil {
-		var tracks []itunes.Track
-		if err := json.Unmarshal(data, &tracks); err == nil {
-			fmt.Println("\nRegular Library Cache:")
-			fmt.Printf("  Tracks: %d\n", len(tracks))
-
-			// Check for persistent IDs
-			withPersistentID := 0
-			for _, track := range tracks {
-				if track.ID != "" {
-					withPersistentID++
-				}
-			}
-			fmt.Printf("  Tracks with Persistent IDs: %d (%.1f%%)\n",
-				withPersistentID, float64(withPersistentID)/float64(len(tracks))*100)
-
-			// Sample tracks
-			fmt.Println("\nSample Tracks:")
-			for i, track := range tracks {
-				if i >= 5 {
-					break
-				}
-				idStr := track.PersistentID
-				if idStr == "" {
-					idStr = track.ID
-				}
-				fmt.Printf("  - %s by %s (ID: %s)\n", track.Name, track.Artist, idStr)
-			}
-
-			return nil
-		}
+	if printRegularCache(filepath.Join(cacheDir, "library.json")) {
+		return nil
 	}
 
 	return fmt.Errorf("no valid cache files found in %s", cacheDir)
+}
+
+func printEnhancedCache(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var response database.RefreshResponse
+	if json.Unmarshal(data, &response) != nil {
+		return false
+	}
+	fmt.Println("\nEnhanced Library Cache:")
+	fmt.Printf("  Status: %s\n  Tracks: %d\n  Playlists: %d\n  Refresh Time: %s\n",
+		response.Status, len(response.Data.Tracks), len(response.Data.Playlists), response.Data.Stats.RefreshTime)
+	fmt.Println("\nSample Tracks:")
+	for i, track := range response.Data.Tracks {
+		if i >= 5 {
+			break
+		}
+		fmt.Printf("  - %s by %s (ID: %s)\n", track.Name, track.Artist, track.PersistentID)
+	}
+	fmt.Println("\nSample Playlists:")
+	for i, playlist := range response.Data.Playlists {
+		if i >= 5 {
+			break
+		}
+		fmt.Printf("  - %s (%d tracks, ID: %s)\n", playlist.Name, playlist.TrackCount, playlist.ID)
+	}
+	return true
+}
+
+func printRegularCache(path string) bool {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return false
+	}
+	var tracks []itunes.Track
+	if json.Unmarshal(data, &tracks) != nil {
+		return false
+	}
+	fmt.Println("\nRegular Library Cache:")
+	fmt.Printf("  Tracks: %d\n", len(tracks))
+	withPersistentID := 0
+	for _, track := range tracks {
+		if track.ID != "" {
+			withPersistentID++
+		}
+	}
+	fmt.Printf("  Tracks with Persistent IDs: %d (%.1f%%)\n", withPersistentID, float64(withPersistentID)/float64(len(tracks))*100)
+	fmt.Println("\nSample Tracks:")
+	for i, track := range tracks {
+		if i >= 5 {
+			break
+		}
+		idStr := track.PersistentID
+		if idStr == "" {
+			idStr = track.ID
+		}
+		fmt.Printf("  - %s by %s (ID: %s)\n", track.Name, track.Artist, idStr)
+	}
+	return true
 }
 
 // validateDatabase validates an existing database
@@ -372,74 +372,83 @@ func validateDatabase() error {
 	fmt.Printf("  Genres:    %d\n", stats.GenreCount)
 	fmt.Printf("  Size:      %.2f MB\n", float64(stats.DatabaseSize)/(1024*1024))
 
-	// Run validation
 	fmt.Println("\nRunning validation checks...")
+	if err := validateTrackIDs(dm); err != nil {
+		return err
+	}
+	if err := validateFTSIndex(dm, stats.TrackCount); err != nil {
+		return err
+	}
+	validateSearches(dm)
+	if err := validatePlaylistAssociations(dm); err != nil {
+		return err
+	}
+	if err := printSampleTracks(dm); err != nil {
+		return err
+	}
 
-	// Check for tracks without persistent IDs
-	var tracksWithoutID int
-	err = dm.DB.QueryRow(`
-		SELECT COUNT(*) FROM tracks
-		WHERE persistent_id IS NULL OR persistent_id = ''
-	`).Scan(&tracksWithoutID)
+	fmt.Println("\nValidation completed!")
+	return nil
+}
+
+func validateTrackIDs(dm *database.DatabaseManager) error {
+	var count int
+	err := dm.DB.QueryRow("SELECT COUNT(*) FROM tracks WHERE persistent_id IS NULL OR persistent_id = ''").Scan(&count)
 	if err != nil {
 		return fmt.Errorf("failed to check tracks without IDs: %w", err)
 	}
-
-	if tracksWithoutID > 0 {
-		fmt.Printf("  ⚠️  Found %d tracks without persistent IDs\n", tracksWithoutID)
+	if count > 0 {
+		fmt.Printf("  ⚠️  Found %d tracks without persistent IDs\n", count)
 	} else {
 		fmt.Println("  ✓ All tracks have persistent IDs")
 	}
+	return nil
+}
 
-	// Check FTS index
+func validateFTSIndex(dm *database.DatabaseManager, trackCount int64) error {
 	var ftsCount int64
-	err = dm.DB.QueryRow("SELECT COUNT(*) FROM tracks_fts").Scan(&ftsCount)
-	if err != nil {
+	if err := dm.DB.QueryRow("SELECT COUNT(*) FROM tracks_fts").Scan(&ftsCount); err != nil {
 		return fmt.Errorf("failed to check FTS index: %w", err)
 	}
-
-	if ftsCount != stats.TrackCount {
-		fmt.Printf("  ⚠️  FTS index has %d entries but there are %d tracks\n", ftsCount, stats.TrackCount)
+	if ftsCount != trackCount {
+		fmt.Printf("  ⚠️  FTS index has %d entries but there are %d tracks\n", ftsCount, trackCount)
 	} else {
 		fmt.Printf("  ✓ FTS index is in sync (%d entries)\n", ftsCount)
 	}
+	return nil
+}
 
-	// Test search functionality
+func validateSearches(dm *database.DatabaseManager) {
 	fmt.Println("\nTesting search functionality...")
-	searchTerms := []string{"love", "blue", "jazz", "rock", "classical"}
-
-	for _, term := range searchTerms {
-		tracks, searchErr := dm.SearchTracksWithFTS(context.Background(), term, &database.SearchFilters{Limit: 5})
-		if searchErr != nil {
-			fmt.Printf("  ✗ Search for '%s' failed: %v\n", term, searchErr)
-		} else {
-			fmt.Printf("  ✓ Search for '%s' returned %d results\n", term, len(tracks))
-			if *verbose && len(tracks) > 0 {
-				fmt.Printf("    Sample: %s by %s\n", tracks[0].Name, tracks[0].Artist)
-			}
+	for _, term := range []string{"love", "blue", "jazz", "rock", "classical"} {
+		tracks, err := dm.SearchTracksWithFTS(context.Background(), term, &database.SearchFilters{Limit: 5})
+		if err != nil {
+			fmt.Printf("  ✗ Search for '%s' failed: %v\n", term, err)
+			continue
+		}
+		fmt.Printf("  ✓ Search for '%s' returned %d results\n", term, len(tracks))
+		if *verbose && len(tracks) > 0 {
+			fmt.Printf("    Sample: %s by %s\n", tracks[0].Name, tracks[0].Artist)
 		}
 	}
+}
 
-	// Check playlist associations
-	var orphanedAssociations int
-	err = dm.DB.QueryRow(`
-		SELECT COUNT(*) FROM playlist_tracks pt
-		LEFT JOIN tracks t ON t.id = pt.track_id
-		WHERE t.id IS NULL
-	`).Scan(&orphanedAssociations)
+func validatePlaylistAssociations(dm *database.DatabaseManager) error {
+	var count int
+	err := dm.DB.QueryRow("SELECT COUNT(*) FROM playlist_tracks pt LEFT JOIN tracks t ON t.id = pt.track_id WHERE t.id IS NULL").Scan(&count)
 	if err != nil {
 		return fmt.Errorf("failed to check orphaned associations: %w", err)
 	}
-
-	if orphanedAssociations > 0 {
-		fmt.Printf("\n  ⚠️  Found %d orphaned playlist associations\n", orphanedAssociations)
+	if count > 0 {
+		fmt.Printf("\n  ⚠️  Found %d orphaned playlist associations\n", count)
 	} else {
 		fmt.Println("\n  ✓ No orphaned playlist associations")
 	}
+	return nil
+}
 
-	// Sample some tracks
+func printSampleTracks(dm *database.DatabaseManager) error {
 	fmt.Println("\nSample tracks:")
-
 	rows, err := dm.DB.Query(`
 		SELECT t.name, ar.name, al.name, g.name, t.rating
 		FROM tracks t
@@ -453,17 +462,12 @@ func validateDatabase() error {
 		return fmt.Errorf("failed to sample tracks: %w", err)
 	}
 	defer rows.Close()
-
 	for rows.Next() {
 		var track, artist, album, genre string
 		var rating int
-		if err := rows.Scan(&track, &artist, &album, &genre, &rating); err != nil {
-			continue
+		if rows.Scan(&track, &artist, &album, &genre, &rating) == nil {
+			fmt.Printf("  - %s by %s (Album: %s, Genre: %s, Rating: %d)\n", track, artist, album, genre, rating)
 		}
-		fmt.Printf("  - %s by %s (Album: %s, Genre: %s, Rating: %d)\n",
-			track, artist, album, genre, rating)
 	}
-
-	fmt.Println("\nValidation completed!")
 	return nil
 }

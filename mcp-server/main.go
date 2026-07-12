@@ -44,6 +44,19 @@ func main() {
 		server.WithLogging(),
 	)
 
+	registerSearchTools(mcpServer)
+	registerPlaybackTools(mcpServer)
+	registerEQAudioTools(mcpServer)
+	registerResources(mcpServer)
+
+	// Start stdio server
+	if err := server.ServeStdio(mcpServer); err != nil {
+		fmt.Printf("Server error: %v\n", err)
+		os.Exit(1)
+	}
+}
+
+func registerSearchTools(mcpServer *server.MCPServer) {
 	// Create search tool
 	searchTool := mcp.NewTool("search_itunes",
 		mcp.WithDescription("Searches the local iTunes/Apple Music library for tracks, artists, or albums."),
@@ -53,14 +66,15 @@ func main() {
 		),
 	)
 
-	// Create play tool
+	mcpServer.AddTool(searchTool, searchHandler)
+}
+
+func registerPlaybackTools(mcpServer *server.MCPServer) {
 	playTool := mcp.NewTool("play_track",
 		mcp.WithDescription("Plays a track with optional playlist context for continuous playback. "+
 			"Playlist context enables seamless continuation within the playlist. Album parameter helps locate "+
 			"tracks but does not provide playback context."),
-		mcp.WithString("track_id",
-			mcp.Description("The unique ID of the track from a search result. The most reliable way to play a specific track."),
-		),
+		mcp.WithString("track_id", mcp.Description("The unique ID of the track from a search result. The most reliable way to play a specific track.")),
 		mcp.WithString("playlist",
 			mcp.Description("The name of the playlist to play. If a track_id is also given, starts playback from that track within the playlist."),
 		),
@@ -70,37 +84,6 @@ func main() {
 		),
 		mcp.WithString("track",
 			mcp.Description("The name of the track. Use as a fallback if track_id is not known."),
-		),
-	)
-
-	// Create refresh tool
-	refreshTool := mcp.NewTool("refresh_library",
-		mcp.WithDescription("Refreshes the iTunes library database by extracting current data from Apple Music app "+
-			"and populating SQLite database. Takes 1-3 minutes for large libraries. Use only when library "+
-			"has changed significantly. Note: This tool takes no parameters, call with empty arguments {}."),
-	)
-
-	// Create now playing tool
-	nowPlayingTool := mcp.NewTool("now_playing",
-		mcp.WithDescription("Gets the current playback status and track information from Apple Music. Note: "+
-			"This tool takes no parameters, call with empty arguments {}."),
-	)
-
-	// Create list playlists tool
-	listPlaylistsTool := mcp.NewTool("list_playlists",
-		mcp.WithDescription("Lists all user playlists in the iTunes/Apple Music library with metadata. Note: "+
-			"This tool takes no parameters, call with empty arguments {}."),
-	)
-
-	// Create get playlist tracks tool
-	getPlaylistTracksTool := mcp.NewTool("get_playlist_tracks",
-		mcp.WithDescription("Gets all tracks in a specific playlist."),
-		mcp.WithString("playlist",
-			mcp.Required(),
-			mcp.Description("The name or persistent ID of the playlist."),
-		),
-		mcp.WithBoolean("use_id",
-			mcp.Description("Set to true if providing a persistent ID instead of name. Default is false (use name)."),
 		),
 	)
 
@@ -158,6 +141,40 @@ func main() {
 		),
 	)
 
+	mcpServer.AddTool(playTool, playHandler)
+	registerLibraryStateTools(mcpServer)
+	registerPlaylistTools(mcpServer)
+	mcpServer.AddTool(searchAdvancedTool, searchAdvancedHandler)
+	mcpServer.AddTool(playStreamTool, playStreamHandler)
+	registerStationTools(mcpServer, searchStationsTool)
+}
+
+func registerLibraryStateTools(mcpServer *server.MCPServer) {
+	refreshTool := mcp.NewTool("refresh_library", mcp.WithDescription(
+		"Refreshes the iTunes library database by extracting current data from Apple Music app "+
+			"and populating SQLite database. Takes 1-3 minutes for large libraries. Use only when library "+
+			"has changed significantly. Note: This tool takes no parameters, call with empty arguments {}."))
+	nowPlayingTool := mcp.NewTool("now_playing", mcp.WithDescription(
+		"Gets the current playback status and track information from Apple Music. Note: "+
+			"This tool takes no parameters, call with empty arguments {}."))
+	listPlaylistsTool := mcp.NewTool("list_playlists", mcp.WithDescription(
+		"Lists all user playlists in the iTunes/Apple Music library with metadata. Note: "+
+			"This tool takes no parameters, call with empty arguments {}."))
+	mcpServer.AddTool(refreshTool, refreshHandler)
+	mcpServer.AddTool(nowPlayingTool, nowPlayingHandler)
+	mcpServer.AddTool(listPlaylistsTool, listPlaylistsHandler)
+}
+
+func registerPlaylistTools(mcpServer *server.MCPServer) {
+	getPlaylistTracksTool := mcp.NewTool("get_playlist_tracks",
+		mcp.WithDescription("Gets all tracks in a specific playlist."),
+		mcp.WithString("playlist", mcp.Required(), mcp.Description("The name or persistent ID of the playlist.")),
+		mcp.WithBoolean("use_id", mcp.Description("Set to true if providing a persistent ID instead of name. Default is false (use name).")),
+	)
+	mcpServer.AddTool(getPlaylistTracksTool, getPlaylistTracksHandler)
+}
+
+func registerEQAudioTools(mcpServer *server.MCPServer) {
 	// Create EQ check tool
 	checkEQTool := mcp.NewTool("check_eq",
 		mcp.WithDescription("Check the current Apple Music Equalizer (EQ) status, including the active preset "+
@@ -194,22 +211,18 @@ func main() {
 		),
 	)
 
-	// Add tools to server
-	mcpServer.AddTool(searchTool, searchHandler)
-	mcpServer.AddTool(playTool, playHandler)
-	mcpServer.AddTool(refreshTool, refreshHandler)
-	mcpServer.AddTool(nowPlayingTool, nowPlayingHandler)
-	mcpServer.AddTool(listPlaylistsTool, listPlaylistsHandler)
-	mcpServer.AddTool(getPlaylistTracksTool, getPlaylistTracksHandler)
-	mcpServer.AddTool(searchAdvancedTool, searchAdvancedHandler)
-	mcpServer.AddTool(playStreamTool, playStreamHandler)
-	mcpServer.AddTool(searchStationsTool, searchStationsHandler)
 	mcpServer.AddTool(checkEQTool, checkEqHandler)
 	mcpServer.AddTool(setEQTool, setEqHandler)
 	mcpServer.AddTool(getOutputDeviceTool, getOutputDeviceHandler)
 	mcpServer.AddTool(listOutputDevicesTool, listOutputDevicesHandler)
 	mcpServer.AddTool(setOutputDeviceTool, setOutputDeviceHandler)
+}
 
+func registerStationTools(mcpServer *server.MCPServer, searchStationsTool mcp.Tool) {
+	mcpServer.AddTool(searchStationsTool, searchStationsHandler)
+}
+
+func registerResources(mcpServer *server.MCPServer) {
 	// Add MCP resources for database statistics
 	dbStatsResource := mcp.NewResource(
 		"itunes://database/stats",
@@ -229,11 +242,6 @@ func main() {
 	mcpServer.AddResource(dbStatsResource, dbStatsHandler)
 	mcpServer.AddResource(playlistsResource, playlistsHandler)
 
-	// Start stdio server
-	if err := server.ServeStdio(mcpServer); err != nil {
-		fmt.Printf("Server error: %v\n", err)
-		os.Exit(1)
-	}
 }
 
 func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -427,51 +435,7 @@ func searchAdvancedHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid query parameter: %v", err)), nil
 	}
 
-	// Build search filters from parameters
-	filters := &database.SearchFilters{}
-
-	if genre := request.GetString("genre", ""); genre != "" {
-		filters.Genre = genre
-	}
-
-	if artist := request.GetString("artist", ""); artist != "" {
-		filters.Artist = artist
-	}
-
-	if album := request.GetString("album", ""); album != "" {
-		filters.Album = album
-	}
-
-	if playlist := request.GetString("playlist", ""); playlist != "" {
-		filters.Playlist = playlist
-	}
-
-	if minRating := request.GetFloat("min_rating", 0); minRating > 0 {
-		filters.MinRating = int(minRating)
-	}
-
-	// Check if starred parameter was provided
-	args := request.GetArguments()
-	if _, hasStarred := args["starred"]; hasStarred {
-		starred := request.GetBool("starred", false)
-		filters.Starred = &starred
-	}
-
-	// Check if streaming_only parameter was provided
-	if _, hasStreamingOnly := args["streaming_only"]; hasStreamingOnly {
-		streamingOnly := request.GetBool("streaming_only", false)
-		filters.StreamingOnly = &streamingOnly
-	}
-
-	// Check if local_only parameter was provided
-	if _, hasLocalOnly := args["local_only"]; hasLocalOnly {
-		localOnly := request.GetBool("local_only", false)
-		filters.LocalOnly = &localOnly
-	}
-
-	if limit := request.GetFloat("limit", 0); limit > 0 {
-		filters.Limit = int(limit)
-	}
+	filters := parseAdvancedSearchFilters(request)
 
 	// Search using database with filters
 	tracks, err := client.SearchTracksFromDatabase(ctx, query, filters)
@@ -489,6 +453,38 @@ func searchAdvancedHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 
 	return mcp.NewToolResultText(string(result)), nil
+}
+
+func parseAdvancedSearchFilters(request mcp.CallToolRequest) *database.SearchFilters {
+	filters := &database.SearchFilters{}
+	filters.Genre = request.GetString("genre", "")
+	filters.Artist = request.GetString("artist", "")
+	filters.Album = request.GetString("album", "")
+	filters.Playlist = request.GetString("playlist", "")
+	if minRating := request.GetFloat("min_rating", 0); minRating > 0 {
+		filters.MinRating = int(minRating)
+	}
+	if limit := request.GetFloat("limit", 0); limit > 0 {
+		filters.Limit = int(limit)
+	}
+	setOptionalSearchBoolFilters(request, filters)
+	return filters
+}
+
+func setOptionalSearchBoolFilters(request mcp.CallToolRequest, filters *database.SearchFilters) {
+	args := request.GetArguments()
+	if _, ok := args["starred"]; ok {
+		value := request.GetBool("starred", false)
+		filters.Starred = &value
+	}
+	if _, ok := args["streaming_only"]; ok {
+		value := request.GetBool("streaming_only", false)
+		filters.StreamingOnly = &value
+	}
+	if _, ok := args["local_only"]; ok {
+		value := request.GetBool("local_only", false)
+		filters.LocalOnly = &value
+	}
 }
 
 //nolint:dupl // The MCP request and response shape intentionally mirrors searchStationsHandler.

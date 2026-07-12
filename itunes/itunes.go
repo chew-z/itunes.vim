@@ -261,33 +261,7 @@ func SetEQStatus(ctx context.Context, preset string, enabled *bool) (*EQStatus, 
 	}
 
 	if audioOutput.OutputType == "airplay" {
-		// Get current EQ status instead of returning an error
-		currentStatus, statusErr := GetEQStatus(ctx)
-		if statusErr != nil {
-			return nil, &ITunesError{
-				Op:   "SetEQStatus: get current EQ status for AirPlay",
-				Kind: ErrAppleMusic,
-				Err:  statusErr,
-				Context: map[string]interface{}{
-					"airplay_device": audioOutput.DeviceName,
-				},
-			}
-		}
-
-		// Return current status with informative message about AirPlay limitation
-		return &EQStatus{
-			Enabled:          currentStatus.Enabled,
-			CurrentPreset:    currentStatus.CurrentPreset,
-			AvailablePresets: currentStatus.AvailablePresets,
-			Message: fmt.Sprintf("EQ settings cannot be changed while using AirPlay device '%s'. Current EQ status: %s", audioOutput.DeviceName, func() string {
-				if currentStatus.Enabled && currentStatus.CurrentPreset != nil && *currentStatus.CurrentPreset != "" {
-					return fmt.Sprintf("enabled with '%s' preset", *currentStatus.CurrentPreset)
-				} else if currentStatus.Enabled {
-					return "enabled with no preset"
-				}
-				return "disabled"
-			}()),
-		}, nil
+		return airPlayEQStatus(ctx, audioOutput)
 	}
 
 	var args []string
@@ -303,24 +277,46 @@ func SetEQStatus(ctx context.Context, preset string, enabled *bool) (*EQStatus, 
 		return nil, &ITunesError{Op: "SetEQStatus: run script", Kind: ErrJXAScript, Err: err}
 	}
 
-	var status EQStatus
-	if err := json.Unmarshal(output, &status); err != nil {
-		// Check for a script-level error response
-		var scriptError struct {
-			Error      string `json:"error"`
-			PresetName string `json:"preset_name"`
-		}
-		if json.Unmarshal(output, &scriptError) == nil && scriptError.Error != "" {
-			return nil, &ITunesError{
-				Op:   "SetEQStatus: script error",
-				Kind: ErrJXAScript,
-				Err:  fmt.Errorf("script error: %s (preset: %s)", scriptError.Error, scriptError.PresetName),
-			}
-		}
-		return nil, &ITunesError{Op: "SetEQStatus: unmarshal json", Kind: ErrJXAScript, Err: err}
-	}
+	return parseEQStatus(output)
+}
 
-	return &status, nil
+func airPlayEQStatus(ctx context.Context, audioOutput *AudioOutput) (*EQStatus, error) {
+	currentStatus, err := GetEQStatus(ctx)
+	if err != nil {
+		return nil, &ITunesError{Op: "SetEQStatus: get current EQ status for AirPlay", Kind: ErrAppleMusic,
+			Err: err, Context: map[string]interface{}{"airplay_device": audioOutput.DeviceName}}
+	}
+	return &EQStatus{Enabled: currentStatus.Enabled, CurrentPreset: currentStatus.CurrentPreset,
+		AvailablePresets: currentStatus.AvailablePresets,
+		Message: fmt.Sprintf("EQ settings cannot be changed while using AirPlay device '%s'. Current EQ status: %s",
+			audioOutput.DeviceName, describeEQStatus(currentStatus))}, nil
+}
+
+func describeEQStatus(status *EQStatus) string {
+	if status.Enabled && status.CurrentPreset != nil && *status.CurrentPreset != "" {
+		return fmt.Sprintf("enabled with '%s' preset", *status.CurrentPreset)
+	}
+	if status.Enabled {
+		return "enabled with no preset"
+	}
+	return "disabled"
+}
+
+func parseEQStatus(output []byte) (*EQStatus, error) {
+	var status EQStatus
+	err := json.Unmarshal(output, &status)
+	if err == nil {
+		return &status, nil
+	}
+	var scriptError struct {
+		Error      string `json:"error"`
+		PresetName string `json:"preset_name"`
+	}
+	if json.Unmarshal(output, &scriptError) == nil && scriptError.Error != "" {
+		return nil, &ITunesError{Op: "SetEQStatus: script error", Kind: ErrJXAScript,
+			Err: fmt.Errorf("script error: %s (preset: %s)", scriptError.Error, scriptError.PresetName)}
+	}
+	return nil, &ITunesError{Op: "SetEQStatus: unmarshal json", Kind: ErrJXAScript, Err: err}
 }
 
 // ListAirPlayDevices retrieves a list of all available AirPlay devices.
@@ -518,40 +514,36 @@ func processRefreshResponse(cacheDir string, responseJSON []byte) error {
 		return &ITunesError{Op: "RefreshLibraryCache: write enhanced cache", Kind: ErrJXAScript, Err: err}
 	}
 
-	// Write legacy cache file (tracks only) for backward compatibility
-	if response.Data != nil && response.Data.Tracks != nil {
-		// Convert JSONTrack to Track for legacy format
-		legacyTracks := make([]Track, len(response.Data.Tracks))
-		for i, jsonTrack := range response.Data.Tracks {
-			legacyTracks[i] = Track{
-				ID:           jsonTrack.PersistentID, // Use persistent ID as the main ID
-				PersistentID: jsonTrack.PersistentID,
-				Name:         jsonTrack.Name,
-				Album:        jsonTrack.Album,
-				Collection:   jsonTrack.Collection,
-				Artist:       jsonTrack.Artist,
-				Playlists:    jsonTrack.Playlists,
-				Genre:        jsonTrack.Genre,
-				Rating:       jsonTrack.Rating,
-				Starred:      jsonTrack.Starred,
-				IsStreaming:  jsonTrack.IsStreaming,
-				Kind:         jsonTrack.Kind,
-				StreamURL:    jsonTrack.StreamURL,
-			}
-		}
-
-		libraryJSON, err := json.Marshal(legacyTracks)
-		if err != nil {
-			return &ITunesError{Op: "RefreshLibraryCache: marshal legacy json", Kind: ErrJXAScript, Err: err}
-		}
-
-		cacheFile := filepath.Join(cacheDir, "library.json")
-		if err := os.WriteFile(cacheFile, libraryJSON, 0644); err != nil {
-			return &ITunesError{Op: "RefreshLibraryCache: write legacy cache", Kind: ErrJXAScript, Err: err}
-		}
+	if err := writeLegacyCache(cacheDir, &response); err != nil {
+		return err
 	}
 
 	return nil
+}
+
+func writeLegacyCache(cacheDir string, response *database.RefreshResponse) error {
+	if response.Data == nil || response.Data.Tracks == nil {
+		return nil
+	}
+	legacyTracks := make([]Track, len(response.Data.Tracks))
+	for i, jsonTrack := range response.Data.Tracks {
+		legacyTracks[i] = legacyTrack(jsonTrack)
+	}
+	libraryJSON, err := json.Marshal(legacyTracks)
+	if err != nil {
+		return &ITunesError{Op: "RefreshLibraryCache: marshal legacy json", Kind: ErrJXAScript, Err: err}
+	}
+	if err := os.WriteFile(filepath.Join(cacheDir, "library.json"), libraryJSON, 0644); err != nil {
+		return &ITunesError{Op: "RefreshLibraryCache: write legacy cache", Kind: ErrJXAScript, Err: err}
+	}
+	return nil
+}
+
+func legacyTrack(track database.JSONTrack) Track {
+	return Track{ID: track.PersistentID, PersistentID: track.PersistentID, Name: track.Name,
+		Album: track.Album, Collection: track.Collection, Artist: track.Artist, Playlists: track.Playlists,
+		Genre: track.Genre, Rating: track.Rating, Starred: track.Starred, IsStreaming: track.IsStreaming,
+		Kind: track.Kind, StreamURL: track.StreamURL}
 }
 
 // GetNowPlaying runs the embedded iTunes_Now_Playing.js script to get current playback status
@@ -665,20 +657,22 @@ func PlayPlaylistTrackWithStatus(ctx context.Context, playlistName, albumName, t
 
 	result.NowPlaying = nowPlaying
 
-	// Create a success message based on what's playing
-	if nowPlaying.Status == "streaming" && nowPlaying.Stream != nil {
-		result.Message = fmt.Sprintf("Started streaming: %s", nowPlaying.Stream.Name)
-	} else if nowPlaying.Status == "playing" && nowPlaying.Track != nil {
-		if nowPlaying.Track.Artist != "" && nowPlaying.Track.Artist != "Unknown Artist" {
-			result.Message = fmt.Sprintf("Now playing: %s by %s", nowPlaying.Track.Name, nowPlaying.Track.Artist)
-		} else {
-			result.Message = fmt.Sprintf("Now playing: %s", nowPlaying.Track.Name)
-		}
-	} else {
-		result.Message = "Playback command sent successfully"
-	}
+	result.Message = playbackStatusMessage(nowPlaying)
 
 	return result, nil
+}
+
+func playbackStatusMessage(nowPlaying *NowPlayingStatus) string {
+	if nowPlaying.Status == "streaming" && nowPlaying.Stream != nil {
+		return fmt.Sprintf("Started streaming: %s", nowPlaying.Stream.Name)
+	}
+	if nowPlaying.Status == "playing" && nowPlaying.Track != nil {
+		if nowPlaying.Track.Artist != "" && nowPlaying.Track.Artist != "Unknown Artist" {
+			return fmt.Sprintf("Now playing: %s by %s", nowPlaying.Track.Name, nowPlaying.Track.Artist)
+		}
+		return fmt.Sprintf("Now playing: %s", nowPlaying.Track.Name)
+	}
+	return "Playback command sent successfully"
 }
 
 // PlayStreamURL plays a stream from any supported streaming URL (itmss://, https://, http://, etc.)
@@ -726,14 +720,16 @@ func PlayStreamURL(ctx context.Context, streamURL string) (*PlayResult, error) {
 
 	result.NowPlaying = nowPlaying
 
-	// Create a success message based on what's playing
-	if nowPlaying.Status == "streaming" && nowPlaying.Stream != nil {
-		result.Message = fmt.Sprintf("Started streaming: %s", nowPlaying.Stream.Name)
-	} else {
-		result.Message = strings.TrimPrefix(response, "OK: ")
-	}
+	result.Message = streamPlaybackStatusMessage(nowPlaying, response)
 
 	return result, nil
+}
+
+func streamPlaybackStatusMessage(nowPlaying *NowPlayingStatus, response string) string {
+	if nowPlaying.Status == "streaming" && nowPlaying.Stream != nil {
+		return fmt.Sprintf("Started streaming: %s", nowPlaying.Stream.Name)
+	}
+	return strings.TrimPrefix(response, "OK: ")
 }
 
 // Client provides database-backed iTunes operations.
