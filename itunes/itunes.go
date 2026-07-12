@@ -841,7 +841,7 @@ var (
 func retryWithBackoff(fn func() error, maxRetries int) error {
 	var lastErr error
 	backoff := 100 * time.Millisecond
-	for i := 0; i < maxRetries; i++ {
+	for range maxRetries {
 		if err := fn(); err == nil {
 			return nil
 		} else {
