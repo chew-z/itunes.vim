@@ -23,3 +23,8 @@ const (
 func (e *ITunesError) Error() string {
 	return fmt.Sprintf("%s: %v", e.Op, e.Err)
 }
+
+// Unwrap exposes the underlying error for errors.Is and errors.As.
+func (e *ITunesError) Unwrap() error {
+	return e.Err
+}

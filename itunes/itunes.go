@@ -189,10 +189,10 @@ func runScript(ctx context.Context, scriptContent string, args []string) ([]byte
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return nil, &ITunesError{
+		return stdout.Bytes(), &ITunesError{
 			Op:   "runScript: execute osascript",
 			Kind: ErrJXAScript,
-			Err:  fmt.Errorf("script failed with stderr: %s", stderr.String()),
+			Err:  fmt.Errorf("script failed with stderr: %s: %w", stderr.String(), err),
 			Context: map[string]interface{}{
 				"script": filepath.Base(tempFile.Name()),
 				"args":   args,
@@ -401,47 +401,13 @@ func PlayPlaylistTrack(playlistName, albumName, trackName, trackID string) error
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Create a temporary file with the embedded script
-	tempFile, err := os.CreateTemp("", "itunes_play_*.js")
-	if err != nil {
-		return &ITunesError{Op: "PlayPlaylistTrack: create temp file", Kind: ErrJXAScript, Err: err}
-	}
-	defer func() { _ = tempFile.Close(); _ = os.Remove(tempFile.Name()) }() //nolint:errcheck // best-effort temp cleanup
-
-	// Write the embedded script to the temp file
-	if _, err := tempFile.WriteString(playScript); err != nil {
-		return &ITunesError{Op: "PlayPlaylistTrack: write to temp file", Kind: ErrJXAScript, Err: err}
-	}
-	if err := tempFile.Close(); err != nil {
-		return &ITunesError{Op: "PlayPlaylistTrack: close temp file", Kind: ErrJXAScript, Err: err}
-	}
-
-	args := make([]string, 0, 7)
-	args = append(args, "-l", "JavaScript", tempFile.Name())
-
 	// Always pass playlist name (empty string if not provided)
-	args = append(args, playlistName)
-
-	// Always pass album name (empty string if not provided)
-	args = append(args, albumName)
-
-	// Always pass track name (empty string if not provided)
-	args = append(args, trackName)
-
-	// Always pass track ID (empty string if not provided) - script prioritizes this
-	args = append(args, trackID)
-
-	cmd := exec.CommandContext(ctx, "osascript", args...)
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
+	stdout, err := runScript(ctx, playScript, []string{playlistName, albumName, trackName, trackID})
+	if err != nil {
 		return &ITunesError{
 			Op:   "PlayPlaylistTrack: run script",
 			Kind: ErrJXAScript,
-			Err:  fmt.Errorf("script failed with stderr: %s", stderr.String()),
+			Err:  err,
 			Context: map[string]interface{}{
 				"playlist": playlistName,
 				"album":    albumName,
@@ -452,7 +418,7 @@ func PlayPlaylistTrack(playlistName, albumName, trackName, trackID string) error
 	}
 
 	// Parse the new structured response format
-	response := strings.TrimSpace(stdout.String())
+	response := strings.TrimSpace(string(stdout))
 	if response == "" {
 		return &ITunesError{Op: "PlayPlaylistTrack: empty response", Kind: ErrJXAScript, Err: errors.New("play script returned no output")}
 	}
@@ -477,7 +443,7 @@ func PlayPlaylistTrack(playlistName, albumName, trackName, trackID string) error
 		Error   string `json:"error"`
 	}
 
-	if err := json.Unmarshal(stdout.Bytes(), &jsonResponse); err == nil {
+	if err := json.Unmarshal(stdout, &jsonResponse); err == nil {
 		if jsonResponse.Status == "error" {
 			return &ITunesError{Op: "PlayPlaylistTrack: script error (json)", Kind: ErrJXAScript, Err: fmt.Errorf("%s", jsonResponse.Message)}
 		}
@@ -500,40 +466,18 @@ func RefreshLibraryCache() error {
 		return &ITunesError{Op: "RefreshLibraryCache: create cache dir", Kind: ErrJXAScript, Err: err}
 	}
 
-	// Create a temporary file with the embedded refresh script
-	tempFile, err := os.CreateTemp("", "itunes_refresh_*.js")
-	if err != nil {
-		return &ITunesError{Op: "RefreshLibraryCache: create temp file", Kind: ErrJXAScript, Err: err}
-	}
-	defer func() { _ = tempFile.Close(); _ = os.Remove(tempFile.Name()) }() //nolint:errcheck // best-effort temp cleanup
-
-	// Write the embedded refresh script to the temp file
-	if _, writeErr := tempFile.WriteString(refreshScript); writeErr != nil {
-		return &ITunesError{Op: "RefreshLibraryCache: write to temp file", Kind: ErrJXAScript, Err: writeErr}
-	}
-	if closeErr := tempFile.Close(); closeErr != nil {
-		return &ITunesError{Op: "RefreshLibraryCache: close temp file", Kind: ErrJXAScript, Err: closeErr}
-	}
-
 	// Provide user feedback before starting the long-running script
 	fmt.Printf("🎵 Extracting music library from Apple Music app")
 	fmt.Printf("\n   This may take 1-3 minutes for large libraries")
 
-	cmd := exec.CommandContext(ctx, "osascript", "-l", "JavaScript", tempFile.Name())
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	// Start the command
-	if startErr := cmd.Start(); startErr != nil {
-		return &ITunesError{Op: "RefreshLibraryCache: start script", Kind: ErrJXAScript, Err: startErr}
+	type scriptResult struct {
+		output []byte
+		err    error
 	}
-
-	// Show progress dots while script is running
-	done := make(chan error, 1)
+	done := make(chan scriptResult, 1)
 	go func() {
-		done <- cmd.Wait()
+		output, scriptErr := runScript(ctx, refreshScript, nil)
+		done <- scriptResult{output: output, err: scriptErr}
 	}()
 
 	// Progress indicator
@@ -542,30 +486,26 @@ func RefreshLibraryCache() error {
 
 	for {
 		select {
-		case err = <-done:
+		case result := <-done:
+			scriptErr := result.err
+			responseJSON := result.output
 			fmt.Printf(" ✅\n")
-			goto scriptComplete
+			if scriptErr != nil {
+				var exitError *exec.ExitError
+				if errors.As(scriptErr, &exitError) && exitError.ExitCode() == 1 {
+					return &ITunesError{Op: "RefreshLibraryCache", Kind: ErrNoTracksFound, Err: errors.New("no tracks found in library")}
+				}
+				return &ITunesError{Op: "RefreshLibraryCache: run script", Kind: ErrJXAScript, Err: scriptErr}
+			}
+			return processRefreshResponse(cacheDir, responseJSON)
 		case <-ticker.C:
 			fmt.Printf(".")
 		}
 	}
+}
 
-scriptComplete:
-	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok {
-			if exitError.ExitCode() == 1 {
-				return &ITunesError{Op: "RefreshLibraryCache", Kind: ErrNoTracksFound, Err: errors.New("no tracks found in library")}
-			}
-		}
-		return &ITunesError{
-			Op:   "RefreshLibraryCache: run script",
-			Kind: ErrJXAScript,
-			Err:  fmt.Errorf("script failed with stderr: %s", stderr.String()),
-		}
-	}
-
+func processRefreshResponse(cacheDir string, responseJSON []byte) error {
 	// Get the JSON output from the refresh script
-	responseJSON := stdout.Bytes()
 	if len(responseJSON) == 0 {
 		return &ITunesError{Op: "RefreshLibraryCache: empty response", Kind: ErrJXAScript, Err: errors.New("refresh script returned no data")}
 	}
@@ -648,37 +588,16 @@ func getNowPlayingAttempt() (*NowPlayingStatus, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	// Create temporary file for the embedded script
-	tempFile, err := os.CreateTemp("", "itunes_now_playing_*.js")
-	if err != nil {
-		return nil, &ITunesError{Op: "GetNowPlaying: create temp file", Kind: ErrJXAScript, Err: err}
-	}
-	defer func() { _ = tempFile.Close(); _ = os.Remove(tempFile.Name()) }() //nolint:errcheck // best-effort temp cleanup
-
-	if _, writeErr := tempFile.WriteString(nowPlayingScript); writeErr != nil {
-		return nil, &ITunesError{Op: "GetNowPlaying: write to temp file", Kind: ErrJXAScript, Err: writeErr}
-	}
-	if closeErr := tempFile.Close(); closeErr != nil {
-		return nil, &ITunesError{Op: "GetNowPlaying: close temp file", Kind: ErrJXAScript, Err: closeErr}
-	}
-
-	cmd := exec.CommandContext(ctx, "osascript", "-l", "JavaScript", tempFile.Name())
-
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err = cmd.Run()
+	responseJSON, err := runScript(ctx, nowPlayingScript, nil)
 	if err != nil {
 		return nil, &ITunesError{
 			Op:   "GetNowPlaying: run script",
 			Kind: ErrJXAScript,
-			Err:  fmt.Errorf("script failed with stderr: %s", stderr.String()),
+			Err:  err,
 		}
 	}
 
 	// Parse the JSON response
-	responseJSON := stdout.Bytes()
 	if len(responseJSON) == 0 {
 		return nil, &ITunesError{Op: "GetNowPlaying: empty response", Kind: ErrJXAScript, Err: errors.New("now playing script returned no data")}
 	}
@@ -776,34 +695,16 @@ func PlayStreamURL(streamURL string) (*PlayResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	// Create temporary file for the embedded script
-	tempFile, err := os.CreateTemp("", "itunes_play_stream_*.js")
-	if err != nil {
-		return nil, &ITunesError{Op: "PlayStreamURL: create temp file", Kind: ErrJXAScript, Err: err}
-	}
-	defer func() { _ = tempFile.Close(); _ = os.Remove(tempFile.Name()) }() //nolint:errcheck // best-effort temp cleanup
-
-	if _, writeErr := tempFile.WriteString(playStreamScript); writeErr != nil {
-		return nil, &ITunesError{Op: "PlayStreamURL: write to temp file", Kind: ErrJXAScript, Err: writeErr}
-	}
-	if closeErr := tempFile.Close(); closeErr != nil {
-		return nil, &ITunesError{Op: "PlayStreamURL: close temp file", Kind: ErrJXAScript, Err: closeErr}
-	}
-
-	cmd := exec.CommandContext(ctx, "osascript", tempFile.Name(), streamURL)
-	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-
-	err = cmd.Run()
-	response := strings.TrimSpace(stdout.String())
+	stdout, err := runScript(ctx, playStreamScript, []string{streamURL})
+	response := strings.TrimSpace(string(stdout))
 
 	result := &PlayResult{
 		Success: err == nil && strings.HasPrefix(response, "OK:"),
 	}
 
 	if err != nil {
-		if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 1 {
+		var exitError *exec.ExitError
+		if errors.As(err, &exitError) && exitError.ExitCode() == 1 {
 			result.Message = fmt.Sprintf("Stream playback failed: %s", response)
 			return result, &ITunesError{Op: "PlayStreamURL: playback failed", Kind: ErrAppleMusic, Err: fmt.Errorf("%s", result.Message)}
 		}
