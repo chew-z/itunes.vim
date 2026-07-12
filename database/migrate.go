@@ -3,6 +3,7 @@ package database
 import (
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -167,7 +168,11 @@ func (dm *DatabaseManager) populateFromRefreshResponse(response *RefreshResponse
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			dm.Logger.Debug("Failed to roll back transaction", zap.Error(err))
+		}
+	}()
 
 	// Clear existing playlist associations to ensure accurate membership
 	if _, err := tx.Exec("DELETE FROM playlist_tracks"); err != nil {
@@ -493,7 +498,10 @@ func (dm *DatabaseManager) insertPlaylistTracksTx(tx *sql.Tx, trackID int64, pla
 					dm.Logger.Error("Failed to create playlist", zap.String("playlist", playlistName), zap.Error(err))
 					continue
 				}
-				playlistID, _ = result.LastInsertId()
+				playlistID, err = result.LastInsertId()
+				if err != nil {
+					return fmt.Errorf("failed to get playlist ID: %w", err)
+				}
 			} else if err != nil {
 				dm.Logger.Error("Failed to find playlist", zap.String("playlist", playlistName), zap.Error(err))
 				continue
@@ -560,7 +568,11 @@ func (dm *DatabaseManager) BatchUpdateTracks(tracks []JSONTrack) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			dm.Logger.Debug("Failed to roll back transaction", zap.Error(err))
+		}
+	}()
 
 	// Prepare statements
 	artistStmt, err := tx.Prepare("INSERT OR IGNORE INTO artists (name) VALUES (?)")
@@ -607,7 +619,11 @@ func (dm *DatabaseManager) UpsertPlaylist(playlist *PlaylistData) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			dm.Logger.Debug("Failed to roll back transaction", zap.Error(err))
+		}
+	}()
 
 	if _, err := dm.insertPlaylistTx(tx, playlist); err != nil {
 		return err

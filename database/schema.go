@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"go.uber.org/zap"
@@ -741,7 +742,9 @@ func InitSchema(db *sql.DB, logger *zap.Logger) error {
 			}
 
 			if _, err := tx.Exec(migration.Up); err != nil {
-				tx.Rollback()
+				if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+					logger.Debug("Failed to roll back migration", zap.Error(rollbackErr))
+				}
 				return fmt.Errorf("failed to apply migration %d: %w", migration.Version, err)
 			}
 
@@ -799,13 +802,17 @@ func MigrateDown(db *sql.DB, targetVersion int, logger *zap.Logger) error {
 			}
 
 			if _, err := tx.Exec(migration.Down); err != nil {
-				tx.Rollback()
+				if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+					logger.Debug("Failed to roll back migration", zap.Error(rollbackErr))
+				}
 				return fmt.Errorf("failed to rollback migration %d: %w", migration.Version, err)
 			}
 
 			// Remove from schema_migrations
 			if _, err := tx.Exec("DELETE FROM schema_migrations WHERE version = ?", migration.Version); err != nil {
-				tx.Rollback()
+				if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+					logger.Debug("Failed to roll back migration", zap.Error(rollbackErr))
+				}
 				return fmt.Errorf("failed to update schema_migrations: %w", err)
 			}
 

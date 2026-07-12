@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -14,8 +15,9 @@ import (
 
 // Constants for database configuration
 var (
-	PrimaryDBPath = getDBPath("ITUNES_DB_PATH", "~/Music/iTunes/itunes_library.db")
-	BackupDBPath  = getDBPath("ITUNES_BACKUP_DB_PATH", "~/Music/iTunes/itunes_library_backup.db")
+	PrimaryDBPath    = getDBPath("ITUNES_DB_PATH", "~/Music/iTunes/itunes_library.db")
+	BackupDBPath     = getDBPath("ITUNES_BACKUP_DB_PATH", "~/Music/iTunes/itunes_library_backup.db")
+	ErrTrackNotFound = errors.New("track not found")
 )
 
 // getDBPath returns the database path from environment variable or default
@@ -56,27 +58,27 @@ type Track struct {
 
 // Playlist represents a playlist with Apple Music persistent ID
 type Playlist struct {
-	ID           int64
-	PersistentID string
-	Name         string
-	Genre        string
-	SpecialKind  string
-	TrackCount   int
+	ID           int64  `json:"id"`
+	PersistentID string `json:"persistent_id"`
+	Name         string `json:"name"`
+	Genre        string `json:"genre"`
+	SpecialKind  string `json:"special_kind"`
+	TrackCount   int    `json:"track_count"`
 }
 
 // RadioStation represents a radio station with metadata
 type RadioStation struct {
-	ID          int64
-	Name        string
-	URL         string
-	Description string
-	Genre       string
-	GenreID     int64
-	Homepage    string // https:// web URL for browser access
-	VerifiedAt  *time.Time
-	IsActive    bool
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID          int64      `json:"id"`
+	Name        string     `json:"name"`
+	URL         string     `json:"url"`
+	Description string     `json:"description"`
+	Genre       string     `json:"genre"`
+	GenreID     int64      `json:"genre_id"`
+	Homepage    string     `json:"homepage"` // https:// web URL for browser access
+	VerifiedAt  *time.Time `json:"verified_at"`
+	IsActive    bool       `json:"is_active"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
 // RadioStationFilters contains search parameters for radio stations
@@ -104,12 +106,12 @@ type SearchFilters struct {
 
 // DatabaseStats contains database statistics
 type DatabaseStats struct {
-	TrackCount    int64
-	PlaylistCount int64
-	ArtistCount   int64
-	AlbumCount    int64
-	GenreCount    int64
-	DatabaseSize  int64
+	TrackCount    int64 `json:"track_count"`
+	PlaylistCount int64 `json:"playlist_count"`
+	ArtistCount   int64 `json:"artist_count"`
+	AlbumCount    int64 `json:"album_count"`
+	GenreCount    int64 `json:"genre_count"`
+	DatabaseSize  int64 `json:"database_size"`
 }
 
 // NewDatabaseManager creates a new database manager instance
@@ -137,7 +139,7 @@ func NewDatabaseManager(dbPath string, logger *zap.Logger) (*DatabaseManager, er
 
 	// Test connection
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close() //nolint:errcheck // already returning constructor error
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
@@ -145,7 +147,7 @@ func NewDatabaseManager(dbPath string, logger *zap.Logger) (*DatabaseManager, er
 
 	// Initialize schema
 	if err := InitSchema(db, logger); err != nil {
-		db.Close()
+		_ = db.Close() //nolint:errcheck // already returning constructor error
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
@@ -302,7 +304,7 @@ func (dm *DatabaseManager) GetTrackByPersistentID(persistentID string) (*Track, 
 	)
 	if err != nil {
 		if err == sql.ErrNoRows {
-			return nil, nil
+			return nil, ErrTrackNotFound
 		}
 		return nil, fmt.Errorf("failed to query track: %w", err)
 	}
@@ -576,7 +578,11 @@ func (dm *DatabaseManager) BatchInsertTracks(tracks []Track) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			dm.Logger.Debug("Failed to roll back transaction", zap.Error(err))
+		}
+	}()
 
 	// Prepare statements
 	trackStmt, err := tx.Prepare(`
@@ -697,7 +703,11 @@ func (dm *DatabaseManager) SyncPlaylist(playlistID string, trackPersistentIDs []
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			dm.Logger.Debug("Failed to roll back transaction", zap.Error(err))
+		}
+	}()
 
 	// Get playlist internal ID
 	var internalPlaylistID int64
@@ -844,7 +854,11 @@ func (dm *DatabaseManager) BatchInsertPlaylistTracks(playlistID int64, trackIDs 
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			dm.Logger.Debug("Failed to roll back transaction", zap.Error(err))
+		}
+	}()
 
 	// Clear existing associations
 	_, err = tx.Exec("DELETE FROM playlist_tracks WHERE playlist_id = ?", playlistID)
@@ -994,7 +1008,11 @@ func (dm *DatabaseManager) UpdateRadioStation(id int64, station *RadioStation) e
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			dm.Logger.Debug("Failed to roll back transaction", zap.Error(err))
+		}
+	}()
 
 	// Build query dynamically for partial updates
 	var queryParts []string
@@ -1131,7 +1149,11 @@ func (dm *DatabaseManager) ImportRadioStations(stations []RadioStation) error {
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
+			dm.Logger.Debug("Failed to roll back transaction", zap.Error(err))
+		}
+	}()
 
 	successCount := 0
 	for _, station := range stations {

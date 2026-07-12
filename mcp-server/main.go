@@ -24,7 +24,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: Failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }() //nolint:errcheck // stderr sync errors are expected on macOS
 
 	// Initialize database (now default mode)
 	if err := itunes.InitDatabase(logger); err != nil {

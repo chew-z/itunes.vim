@@ -167,13 +167,15 @@ func runScript(ctx context.Context, scriptContent string, args []string) ([]byte
 	if err != nil {
 		return nil, &ITunesError{Op: "runScript: create temp file", Kind: ErrJXAScript, Err: err}
 	}
-	defer os.Remove(tempFile.Name())
+	defer func() { _ = tempFile.Close(); _ = os.Remove(tempFile.Name()) }() //nolint:errcheck // best-effort temp cleanup
 
 	if _, err := tempFile.WriteString(scriptContent); err != nil {
-		tempFile.Close()
+		_ = tempFile.Close() //nolint:errcheck // cleanup after write failure
 		return nil, &ITunesError{Op: "runScript: write to temp file", Kind: ErrJXAScript, Err: err}
 	}
-	tempFile.Close()
+	if err := tempFile.Close(); err != nil {
+		return nil, &ITunesError{Op: "runScript: close temp file", Kind: ErrJXAScript, Err: err}
+	}
 
 	cmdArgs := []string{"-l", "JavaScript", tempFile.Name()}
 	if len(args) > 0 {
@@ -404,14 +406,15 @@ func PlayPlaylistTrack(playlistName, albumName, trackName, trackID string) error
 	if err != nil {
 		return &ITunesError{Op: "PlayPlaylistTrack: create temp file", Kind: ErrJXAScript, Err: err}
 	}
-	defer os.Remove(tempFile.Name())
-	defer tempFile.Close()
+	defer func() { _ = tempFile.Close(); _ = os.Remove(tempFile.Name()) }() //nolint:errcheck // best-effort temp cleanup
 
 	// Write the embedded script to the temp file
 	if _, err := tempFile.WriteString(playScript); err != nil {
 		return &ITunesError{Op: "PlayPlaylistTrack: write to temp file", Kind: ErrJXAScript, Err: err}
 	}
-	tempFile.Close()
+	if err := tempFile.Close(); err != nil {
+		return &ITunesError{Op: "PlayPlaylistTrack: close temp file", Kind: ErrJXAScript, Err: err}
+	}
 
 	args := []string{"-l", "JavaScript", tempFile.Name()}
 
@@ -501,14 +504,15 @@ func RefreshLibraryCache() error {
 	if err != nil {
 		return &ITunesError{Op: "RefreshLibraryCache: create temp file", Kind: ErrJXAScript, Err: err}
 	}
-	defer os.Remove(tempFile.Name())
-	defer tempFile.Close()
+	defer func() { _ = tempFile.Close(); _ = os.Remove(tempFile.Name()) }() //nolint:errcheck // best-effort temp cleanup
 
 	// Write the embedded refresh script to the temp file
 	if _, err := tempFile.WriteString(refreshScript); err != nil {
 		return &ITunesError{Op: "RefreshLibraryCache: write to temp file", Kind: ErrJXAScript, Err: err}
 	}
-	tempFile.Close()
+	if err := tempFile.Close(); err != nil {
+		return &ITunesError{Op: "RefreshLibraryCache: close temp file", Kind: ErrJXAScript, Err: err}
+	}
 
 	// Provide user feedback before starting the long-running script
 	fmt.Printf("🎵 Extracting music library from Apple Music app")
@@ -648,12 +652,14 @@ func getNowPlayingAttempt() (*NowPlayingStatus, error) {
 	if err != nil {
 		return nil, &ITunesError{Op: "GetNowPlaying: create temp file", Kind: ErrJXAScript, Err: err}
 	}
-	defer os.Remove(tempFile.Name())
+	defer func() { _ = tempFile.Close(); _ = os.Remove(tempFile.Name()) }() //nolint:errcheck // best-effort temp cleanup
 
 	if _, err := tempFile.WriteString(nowPlayingScript); err != nil {
 		return nil, &ITunesError{Op: "GetNowPlaying: write to temp file", Kind: ErrJXAScript, Err: err}
 	}
-	tempFile.Close()
+	if err := tempFile.Close(); err != nil {
+		return nil, &ITunesError{Op: "GetNowPlaying: close temp file", Kind: ErrJXAScript, Err: err}
+	}
 
 	cmd := exec.CommandContext(ctx, "osascript", "-l", "JavaScript", tempFile.Name())
 
@@ -774,12 +780,14 @@ func PlayStreamURL(streamURL string) (*PlayResult, error) {
 	if err != nil {
 		return nil, &ITunesError{Op: "PlayStreamURL: create temp file", Kind: ErrJXAScript, Err: err}
 	}
-	defer os.Remove(tempFile.Name())
+	defer func() { _ = tempFile.Close(); _ = os.Remove(tempFile.Name()) }() //nolint:errcheck // best-effort temp cleanup
 
 	if _, err := tempFile.WriteString(playStreamScript); err != nil {
 		return nil, &ITunesError{Op: "PlayStreamURL: write to temp file", Kind: ErrJXAScript, Err: err}
 	}
-	tempFile.Close()
+	if err := tempFile.Close(); err != nil {
+		return nil, &ITunesError{Op: "PlayStreamURL: close temp file", Kind: ErrJXAScript, Err: err}
+	}
 
 	cmd := exec.CommandContext(ctx, "osascript", tempFile.Name(), streamURL)
 	var stdout, stderr bytes.Buffer
@@ -870,7 +878,7 @@ func InitDatabase(logger *zap.Logger) error {
 
 	// Run migrations to ensure schema is up to date
 	if err := dm.RunMigrations(); err != nil {
-		dm.Close()
+		_ = dm.Close() //nolint:errcheck // already returning migration error
 		return &ITunesError{Op: "InitDatabase: run migrations", Kind: ErrDatabase, Err: err}
 	}
 
@@ -882,7 +890,7 @@ func InitDatabase(logger *zap.Logger) error {
 // CloseDatabase closes the database connection
 func CloseDatabase() {
 	if DBManager != nil {
-		DBManager.Close()
+		_ = DBManager.Close() //nolint:errcheck // CloseDatabase cannot return an error
 		DBManager = nil
 		SearchManager = nil
 	}
@@ -937,6 +945,9 @@ func GetTrackByPersistentID(persistentID string) (*Track, error) {
 	}
 
 	dbTrack, err := DBManager.GetTrackByPersistentID(persistentID)
+	if errors.Is(err, database.ErrTrackNotFound) {
+		return nil, &ITunesError{Op: "GetTrackByPersistentID", Kind: ErrNoTracksFound, Err: fmt.Errorf("track with persistent ID '%s' not found", persistentID)}
+	}
 	if err != nil {
 		return nil, &ITunesError{Op: "GetTrackByPersistentID: get from db", Kind: ErrDatabase, Err: err}
 	}

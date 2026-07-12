@@ -47,7 +47,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Error: Failed to initialize logger: %v\n", err)
 		os.Exit(1)
 	}
-	defer logger.Sync()
+	defer func() { _ = logger.Sync() }() //nolint:errcheck // stderr sync errors are expected on macOS
 
 	command := os.Args[1]
 
