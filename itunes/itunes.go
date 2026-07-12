@@ -440,7 +440,7 @@ func PlayPlaylistTrack(ctx context.Context, playlistName, albumName, trackName, 
 // RefreshLibraryCache runs the embedded iTunes_Refresh_Library.js script to build a comprehensive library cache.
 // The cache is stored as JSON in $TMPDIR/itunes-cache/library.json for fast searching.
 func RefreshLibraryCache(ctx context.Context) error {
-	ctx, cancel := context.WithTimeout(ctx, 180*time.Second) // 3 minutes for full library scan
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Minute) // full library scan; ~9.5k tracks already needs >3 min
 	defer cancel()
 
 	// Ensure cache directory exists
