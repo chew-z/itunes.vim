@@ -76,7 +76,7 @@ type Track struct {
 
 **Architecture**: SQLite-only storage with Apple Music Persistent IDs
 **Performance**: <7ms search, <5µs cached queries, ~800 tracks/sec insert
-**Schema v4**: Normalized tables (artists, albums, tracks, playlists, radio_stations)
+**Schema v6**: Normalized tables (artists, genres, albums, tracks, playlists, radio_stations); station genre lives in `genres` via `genre_id`
 **Search**: FTS5 full-text with relevance ranking
 **Size**: ~760 bytes per track including indexes
 
@@ -129,7 +129,7 @@ type Track struct {
 **`now_playing`**: Current playback status
 - Returns: Track info, position, player state
 
-**`refresh_library`**: Update database from Apple Music (1-3 min)
+**`refresh_library`**: Update database from Apple Music (~15-30s via JXA bulk fetch)
 - Warning: Resource-intensive, user approval needed
 
 **`search_advanced`**: Advanced search with filters
@@ -169,7 +169,7 @@ type Track struct {
 
 **Storage**: SQLite-only with FTS5 search
 **Refresh**: `refresh_library` tool or `./bin/itunes-migrate -from-script`
-**Process**: Apple Music → JXA → JSON → SQLite (1-3 min)
+**Process**: Apple Music → JXA (bulk property fetch, ~15s for 11k tracks) → JSON → SQLite
 **Environment**:
 - `ITUNES_DB_PATH`: Database location
 - `ITUNES_SEARCH_LIMIT`: Result limit (default: 15)
@@ -188,6 +188,16 @@ type Track struct {
 **Playback**: Same API for streaming and local tracks
 
 ## Recent Critical Updates
+
+### Refresh Script Bulk-Fetch Rewrite (Jul 2026)
+**Problem**: The refresh JXA script read every track property with an individual Apple Event (~8 events x 11k tracks). Extraction stopped completing within any timeout once the library grew past ~10k tracks.
+
+**Fix**: `iTunes_Refresh_Library.js` now uses JXA bulk property fetches — `tracks.name()`, `tracks.persistentID()`, etc. return the entire column in one Apple Event, producing parallel arrays. Stream URLs come from a separate `urlTracks` bulk fetch mapped by persistent ID. Extraction time: ~14 s for 11k tracks (previously killed after 10 min). Output JSON is unchanged; no Go changes were needed beyond raising the `RefreshLibraryCache` timeout to 10 min as headroom. Commit `a2e34c2`.
+
+**Lesson for future JXA work**: never loop per-object property reads over large collections; always use collection-level bulk fetches.
+
+### 2026 Revival (Jul 2026)
+Multi-session cleanup: deps updated (mcp-go v0.56, modernc.org/sqlite v1.53, zap v1.28), 109 golangci-lint findings fixed to zero, JXA execution deduplicated through `runScript` (script piped via osascript stdin, no temp files), `context.Context` threaded end-to-end (MCP request → database `QueryContext` / JXA `exec.CommandContext`), package globals replaced by `itunes.Client` (`NewClient(logger)` / `Close()`), and all high-complexity functions split. Commits `e97e52e`..`41031b2`.
 
 ### EQ and Audio Output Control Tools (Aug 2025)
 **New Functionality**: Added comprehensive EQ and audio output device management.

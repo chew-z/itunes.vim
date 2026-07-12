@@ -152,7 +152,7 @@ func registerPlaybackTools(mcpServer *server.MCPServer) {
 func registerLibraryStateTools(mcpServer *server.MCPServer) {
 	refreshTool := mcp.NewTool("refresh_library", mcp.WithDescription(
 		"Refreshes the iTunes library database by extracting current data from Apple Music app "+
-			"and populating SQLite database. Takes 1-3 minutes for large libraries. Use only when library "+
+			"and populating SQLite database. Takes ~15-30 seconds. Use only when library "+
 			"has changed significantly. Note: This tool takes no parameters, call with empty arguments {}."))
 	nowPlayingTool := mcp.NewTool("now_playing", mcp.WithDescription(
 		"Gets the current playback status and track information from Apple Music. Note: "+

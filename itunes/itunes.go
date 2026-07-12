@@ -451,7 +451,7 @@ func RefreshLibraryCache(ctx context.Context) error {
 
 	// Provide user feedback before starting the long-running script
 	fmt.Printf("🎵 Extracting music library from Apple Music app")
-	fmt.Printf("\n   This may take 1-3 minutes for large libraries")
+	fmt.Printf("\n   This usually takes under a minute")
 
 	type scriptResult struct {
 		output []byte

@@ -48,7 +48,7 @@ This project evolved from a legacy VIM plugin for iTunes integration. The origin
 
 - **Search path**: queries hit the local SQLite database directly — the Apple Music app is not involved.
 - **Playback path**: Go pipes embedded JXA scripts to `osascript` via stdin (no temp files) to drive the Apple Music app.
-- **Library refresh**: Apple Music → JXA → SQLite (1–3 minutes for large libraries).
+- **Library refresh**: Apple Music → JXA bulk property fetch → SQLite (~15–30 seconds even for 10k+ track libraries).
 
 ## Installation
 
@@ -75,7 +75,7 @@ go build -o bin/itunes-migrate ./cmd/migrate  # Migration tool
 ### Database Setup (first)
 
 ```bash
-# First-time setup or library refresh (1-3 minutes)
+# First-time setup or library refresh (~15-30 seconds)
 ./bin/itunes-migrate -from-script
 
 # Validate existing database
@@ -134,7 +134,7 @@ Claude Desktop / Claude Code configuration:
 - `search_advanced` — filtered search (genre, artist, album, rating, starred, streaming)
 - `play_track` — play with ID-based lookup and optional playlist context
 - `now_playing` — current playback status and track info
-- `refresh_library` — rebuild database from Apple Music (1–3 min, resource-intensive)
+- `refresh_library` — rebuild database from Apple Music (~15–30 s, resource-intensive)
 
 **Playlists:**
 - `list_playlists` — all playlists with metadata
@@ -178,6 +178,13 @@ Track IDs come from search results and are Apple Music persistent IDs, which avo
 | `ITUNES_BACKUP_DB_PATH` | `~/Music/iTunes/itunes_library_backup.db` | Backup database path |
 | `ITUNES_SEARCH_LIMIT` | `15` | Maximum search results |
 
+## Documentation
+
+Developer docs live in [`docs/`](docs/): [architecture](docs/ARCHITECTURE.md),
+[database & FTS5 internals](docs/DATABASE.md), and
+[JXA automation](docs/JXA-AUTOMATION.md) (including the bulk-fetch rule —
+required reading before touching any JXA script).
+
 ## Development
 
 ### Project Structure
@@ -188,6 +195,7 @@ Track IDs come from search results and are Apple Music persistent IDs, which avo
 ├── itunes/                # Core library: Client type, playback, EQ, JXA scripts
 │   └── scripts/           # Embedded JXA automation scripts
 ├── database/              # SQLite + FTS5: schema, search, migrations
+├── docs/                  # Developer documentation
 ├── logging/               # zap logger setup
 └── cmd/migrate/           # Database migration/validation tool
 ```
