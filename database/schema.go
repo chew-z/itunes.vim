@@ -735,25 +735,9 @@ func InitSchema(ctx context.Context, db *sql.DB, logger *zap.Logger) error {
 	// Apply migrations
 	for _, migration := range Schema {
 		if migration.Version > currentVersion {
-			logger.Info("Applying migration", zap.Int("version", migration.Version), zap.String("description", migration.Description))
-
-			tx, err := db.BeginTx(ctx, nil)
-			if err != nil {
-				return fmt.Errorf("failed to begin transaction: %w", err)
+			if err := applyMigrationTx(ctx, db, logger, migration); err != nil {
+				return err
 			}
-
-			if _, err := tx.ExecContext(ctx, migration.Up); err != nil {
-				if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-					logger.Debug("Failed to roll back migration", zap.Error(rollbackErr))
-				}
-				return fmt.Errorf("failed to apply migration %d: %w", migration.Version, err)
-			}
-
-			if err := tx.Commit(); err != nil {
-				return fmt.Errorf("failed to commit migration %d: %w", migration.Version, err)
-			}
-
-			logger.Info("Successfully applied migration", zap.Int("version", migration.Version))
 		}
 	}
 
@@ -762,6 +746,25 @@ func InitSchema(ctx context.Context, db *sql.DB, logger *zap.Logger) error {
 		logger.Warn("Failed to run ANALYZE", zap.Error(err))
 	}
 
+	return nil
+}
+
+func applyMigrationTx(ctx context.Context, db *sql.DB, logger *zap.Logger, migration Migration) error {
+	logger.Info("Applying migration", zap.Int("version", migration.Version), zap.String("description", migration.Description))
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, migration.Up); err != nil {
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			logger.Debug("Failed to roll back migration", zap.Error(rollbackErr))
+		}
+		return fmt.Errorf("failed to apply migration %d: %w", migration.Version, err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit migration %d: %w", migration.Version, err)
+	}
+	logger.Info("Successfully applied migration", zap.Int("version", migration.Version))
 	return nil
 }
 
@@ -795,35 +798,38 @@ func MigrateDown(ctx context.Context, db *sql.DB, targetVersion int, logger *zap
 	for i := len(Schema) - 1; i >= 0; i-- {
 		migration := Schema[i]
 		if migration.Version > targetVersion && migration.Version <= currentVersion {
-			logger.Info("Rolling back migration", zap.Int("version", migration.Version), zap.String("description", migration.Description))
-
-			tx, err := db.BeginTx(ctx, nil)
-			if err != nil {
-				return fmt.Errorf("failed to begin transaction: %w", err)
+			if err := revertMigrationTx(ctx, db, logger, migration); err != nil {
+				return err
 			}
-
-			if _, err := tx.ExecContext(ctx, migration.Down); err != nil {
-				if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-					logger.Debug("Failed to roll back migration", zap.Error(rollbackErr))
-				}
-				return fmt.Errorf("failed to rollback migration %d: %w", migration.Version, err)
-			}
-
-			// Remove from schema_migrations
-			if _, err := tx.ExecContext(ctx, "DELETE FROM schema_migrations WHERE version = ?", migration.Version); err != nil {
-				if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
-					logger.Debug("Failed to roll back migration", zap.Error(rollbackErr))
-				}
-				return fmt.Errorf("failed to update schema_migrations: %w", err)
-			}
-
-			if err := tx.Commit(); err != nil {
-				return fmt.Errorf("failed to commit rollback %d: %w", migration.Version, err)
-			}
-
-			logger.Info("Successfully rolled back migration", zap.Int("version", migration.Version))
 		}
 	}
 
 	return nil
+}
+
+func revertMigrationTx(ctx context.Context, db *sql.DB, logger *zap.Logger, migration Migration) error {
+	logger.Info("Rolling back migration", zap.Int("version", migration.Version), zap.String("description", migration.Description))
+	tx, err := db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	if _, err := tx.ExecContext(ctx, migration.Down); err != nil {
+		rollbackMigrationTx(logger, tx)
+		return fmt.Errorf("failed to rollback migration %d: %w", migration.Version, err)
+	}
+	if _, err := tx.ExecContext(ctx, "DELETE FROM schema_migrations WHERE version = ?", migration.Version); err != nil {
+		rollbackMigrationTx(logger, tx)
+		return fmt.Errorf("failed to update schema_migrations: %w", err)
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit rollback %d: %w", migration.Version, err)
+	}
+	logger.Info("Successfully rolled back migration", zap.Int("version", migration.Version))
+	return nil
+}
+
+func rollbackMigrationTx(logger *zap.Logger, tx *sql.Tx) {
+	if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+		logger.Debug("Failed to roll back migration", zap.Error(rollbackErr))
+	}
 }

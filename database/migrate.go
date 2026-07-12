@@ -180,47 +180,8 @@ func (dm *DatabaseManager) populateFromRefreshResponse(ctx context.Context, resp
 		return fmt.Errorf("failed to clear existing playlist associations: %w", err)
 	}
 
-	// First, insert all playlists
-	playlistIDMap := make(map[string]int64)    // persistentID -> database ID
-	playlistNameToID := make(map[string]int64) // name -> database ID
-
-	for _, playlist := range response.Data.Playlists {
-		playlistID, err := dm.insertPlaylistTx(ctx, tx, &playlist)
-		if err != nil {
-			progress.Errors = append(progress.Errors, fmt.Errorf("playlist %s: %w", playlist.Name, err))
-			dm.Logger.Error("Error inserting playlist", zap.String("playlist", playlist.Name), zap.Error(err))
-			continue
-		}
-		playlistIDMap[playlist.ID] = playlistID
-		playlistNameToID[playlist.Name] = playlistID
-		progress.ProcessedPlaylists++
-
-		if callback != nil && progress.ProcessedPlaylists%10 == 0 {
-			callback(progress)
-		}
-	}
-
-	// Batch insert tracks
-	const batchSize = 100
-	for i := 0; i < len(response.Data.Tracks); i += batchSize {
-		end := i + batchSize
-		if end > len(response.Data.Tracks) {
-			end = len(response.Data.Tracks)
-		}
-
-		batch := response.Data.Tracks[i:end]
-		if err := dm.batchInsertTracksTx(ctx, tx, batch, playlistNameToID); err != nil {
-			progress.Errors = append(progress.Errors, fmt.Errorf("batch %d-%d: %w", i, end, err))
-			dm.Logger.Error("Error inserting batch", zap.Int("start", i), zap.Int("end", end), zap.Error(err))
-			continue
-		}
-
-		progress.ProcessedTracks += len(batch)
-		if callback != nil {
-			progress.ElapsedTime = time.Since(progress.StartTime)
-			callback(progress)
-		}
-	}
+	playlistNameToID := dm.populatePlaylistsTx(ctx, tx, response.Data.Playlists, &progress, callback)
+	dm.populateTracksTx(ctx, tx, response.Data.Tracks, playlistNameToID, &progress, callback)
 
 	// Update FTS index
 	if err := dm.updateFTSIndexTx(ctx, tx); err != nil {
@@ -248,6 +209,51 @@ func (dm *DatabaseManager) populateFromRefreshResponse(ctx context.Context, resp
 	}
 
 	return nil
+}
+
+func (dm *DatabaseManager) populatePlaylistsTx(
+	ctx context.Context, tx *sql.Tx, playlists []PlaylistData, progress *MigrationProgress, callback ProgressCallback,
+) map[string]int64 {
+	playlistIDMap := make(map[string]int64)
+	playlistNameToID := make(map[string]int64)
+	for _, playlist := range playlists {
+		playlistID, err := dm.insertPlaylistTx(ctx, tx, &playlist)
+		if err != nil {
+			progress.Errors = append(progress.Errors, fmt.Errorf("playlist %s: %w", playlist.Name, err))
+			dm.Logger.Error("Error inserting playlist", zap.String("playlist", playlist.Name), zap.Error(err))
+			continue
+		}
+		playlistIDMap[playlist.ID] = playlistID
+		playlistNameToID[playlist.Name] = playlistID
+		progress.ProcessedPlaylists++
+		if callback != nil && progress.ProcessedPlaylists%10 == 0 {
+			callback(*progress)
+		}
+	}
+	return playlistNameToID
+}
+
+func (dm *DatabaseManager) populateTracksTx(
+	ctx context.Context, tx *sql.Tx, tracks []JSONTrack, playlistNameToID map[string]int64, progress *MigrationProgress, callback ProgressCallback,
+) {
+	const batchSize = 100
+	for i := 0; i < len(tracks); i += batchSize {
+		end := i + batchSize
+		if end > len(tracks) {
+			end = len(tracks)
+		}
+		batch := tracks[i:end]
+		if err := dm.batchInsertTracksTx(ctx, tx, batch, playlistNameToID); err != nil {
+			progress.Errors = append(progress.Errors, fmt.Errorf("batch %d-%d: %w", i, end, err))
+			dm.Logger.Error("Error inserting batch", zap.Int("start", i), zap.Int("end", end), zap.Error(err))
+			continue
+		}
+		progress.ProcessedTracks += len(batch)
+		if callback != nil {
+			progress.ElapsedTime = time.Since(progress.StartTime)
+			callback(*progress)
+		}
+	}
 }
 
 // insertPlaylistTx inserts a playlist within a transaction
@@ -336,53 +342,9 @@ func (dm *DatabaseManager) insertTrackTx(ctx context.Context, tx *sql.Tx, track 
 		return 0, fmt.Errorf("failed to check existing track: %w", err)
 	}
 
-	// Ensure artist exists
-	if track.Artist == "" {
-		track.Artist = "Unknown Artist"
-	}
-	if _, artistErr := artistStmt.ExecContext(ctx, track.Artist); artistErr != nil {
-		return 0, fmt.Errorf("failed to insert artist: %w", artistErr)
-	}
-
-	var artistID int64
-	err = tx.QueryRowContext(ctx, "SELECT id FROM artists WHERE name = ?", track.Artist).Scan(&artistID)
+	artistID, genreID, albumID, err := dm.insertTrackReferencesTx(ctx, tx, track, artistStmt, genreStmt)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get artist ID: %w", err)
-	}
-
-	// Ensure genre exists
-	if track.Genre == "" {
-		track.Genre = "Unknown"
-	}
-	if _, genreErr := genreStmt.ExecContext(ctx, track.Genre); genreErr != nil {
-		return 0, fmt.Errorf("failed to insert genre: %w", genreErr)
-	}
-
-	var genreID int64
-	err = tx.QueryRowContext(ctx, "SELECT id FROM genres WHERE name = ?", track.Genre).Scan(&genreID)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get genre ID: %w", err)
-	}
-
-	// Get or create album
-	if track.Album == "" {
-		track.Album = "Unknown Album"
-	}
-
-	var albumID int64
-	err = tx.QueryRowContext(ctx, "SELECT id FROM albums WHERE name = ? AND artist_id = ?", track.Album, artistID).Scan(&albumID)
-	if err == sql.ErrNoRows {
-		// Create album
-		result, insertErr := tx.ExecContext(ctx, "INSERT INTO albums (name, artist_id, genre_id) VALUES (?, ?, ?)", track.Album, artistID, genreID)
-		if insertErr != nil {
-			return 0, fmt.Errorf("failed to insert album: %w", insertErr)
-		}
-		albumID, err = result.LastInsertId()
-		if err != nil {
-			return 0, fmt.Errorf("failed to get album ID: %w", err)
-		}
-	} else if err != nil {
-		return 0, fmt.Errorf("failed to check existing album: %w", err)
+		return 0, err
 	}
 
 	// Insert track
@@ -401,55 +363,42 @@ func (dm *DatabaseManager) insertTrackTx(ctx context.Context, tx *sql.Tx, track 
 	return result.LastInsertId()
 }
 
-// updateTrackTx updates an existing track within a transaction
-func (dm *DatabaseManager) updateTrackTx(ctx context.Context, tx *sql.Tx, trackID int64, track *JSONTrack) (int64, error) {
-	// Get or create artist
+func (dm *DatabaseManager) insertTrackReferencesTx(
+	ctx context.Context, tx *sql.Tx, track *JSONTrack, artistStmt, genreStmt *sql.Stmt,
+) (int64, int64, int64, error) {
 	if track.Artist == "" {
 		track.Artist = "Unknown Artist"
 	}
-
-	var artistID int64
-	err := tx.QueryRowContext(ctx, "SELECT id FROM artists WHERE name = ?", track.Artist).Scan(&artistID)
-	if err == sql.ErrNoRows {
-		result, insertErr := tx.ExecContext(ctx, "INSERT INTO artists (name) VALUES (?)", track.Artist)
-		if insertErr != nil {
-			return 0, fmt.Errorf("failed to insert artist: %w", insertErr)
-		}
-		artistID, err = result.LastInsertId()
-		if err != nil {
-			return 0, fmt.Errorf("failed to get artist ID: %w", err)
-		}
-	} else if err != nil {
-		return 0, fmt.Errorf("failed to get artist ID: %w", err)
+	if _, err := artistStmt.ExecContext(ctx, track.Artist); err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to insert artist: %w", err)
 	}
-
-	// Get or create genre
+	var artistID int64
+	if err := tx.QueryRowContext(ctx, "SELECT id FROM artists WHERE name = ?", track.Artist).Scan(&artistID); err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to get artist ID: %w", err)
+	}
 	if track.Genre == "" {
 		track.Genre = "Unknown"
 	}
-
-	var genreID int64
-	err = tx.QueryRowContext(ctx, "SELECT id FROM genres WHERE name = ?", track.Genre).Scan(&genreID)
-	if err == sql.ErrNoRows {
-		result, insertErr := tx.ExecContext(ctx, "INSERT INTO genres (name) VALUES (?)", track.Genre)
-		if insertErr != nil {
-			return 0, fmt.Errorf("failed to insert genre: %w", insertErr)
-		}
-		genreID, err = result.LastInsertId()
-		if err != nil {
-			return 0, fmt.Errorf("failed to get genre ID: %w", err)
-		}
-	} else if err != nil {
-		return 0, fmt.Errorf("failed to get genre ID: %w", err)
+	if _, err := genreStmt.ExecContext(ctx, track.Genre); err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to insert genre: %w", err)
 	}
+	var genreID int64
+	if err := tx.QueryRowContext(ctx, "SELECT id FROM genres WHERE name = ?", track.Genre).Scan(&genreID); err != nil {
+		return 0, 0, 0, fmt.Errorf("failed to get genre ID: %w", err)
+	}
+	albumID, err := getOrCreateTrackAlbumTx(ctx, tx, track, artistID, genreID)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return artistID, genreID, albumID, nil
+}
 
-	// Get or create album
+func getOrCreateTrackAlbumTx(ctx context.Context, tx *sql.Tx, track *JSONTrack, artistID, genreID int64) (int64, error) {
 	if track.Album == "" {
 		track.Album = "Unknown Album"
 	}
-
 	var albumID int64
-	err = tx.QueryRowContext(ctx, "SELECT id FROM albums WHERE name = ? AND artist_id = ?", track.Album, artistID).Scan(&albumID)
+	err := tx.QueryRowContext(ctx, "SELECT id FROM albums WHERE name = ? AND artist_id = ?", track.Album, artistID).Scan(&albumID)
 	if err == sql.ErrNoRows {
 		result, insertErr := tx.ExecContext(ctx, "INSERT INTO albums (name, artist_id, genre_id) VALUES (?, ?, ?)", track.Album, artistID, genreID)
 		if insertErr != nil {
@@ -461,6 +410,15 @@ func (dm *DatabaseManager) updateTrackTx(ctx context.Context, tx *sql.Tx, trackI
 		}
 	} else if err != nil {
 		return 0, fmt.Errorf("failed to check existing album: %w", err)
+	}
+	return albumID, nil
+}
+
+// updateTrackTx updates an existing track within a transaction
+func (dm *DatabaseManager) updateTrackTx(ctx context.Context, tx *sql.Tx, trackID int64, track *JSONTrack) (int64, error) {
+	artistID, genreID, albumID, err := dm.updateTrackReferencesTx(ctx, tx, track)
+	if err != nil {
+		return 0, err
 	}
 
 	// Update track
@@ -479,6 +437,52 @@ func (dm *DatabaseManager) updateTrackTx(ctx context.Context, tx *sql.Tx, trackI
 	return trackID, nil
 }
 
+func (dm *DatabaseManager) updateTrackReferencesTx(ctx context.Context, tx *sql.Tx, track *JSONTrack) (int64, int64, int64, error) {
+	artistID, err := getOrCreateTrackReferenceTx(ctx, tx, "artists", track, "Artist", "Unknown Artist")
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	genreID, err := getOrCreateTrackReferenceTx(ctx, tx, "genres", track, "Genre", "Unknown")
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	albumID, err := getOrCreateTrackAlbumTx(ctx, tx, track, artistID, genreID)
+	if err != nil {
+		return 0, 0, 0, err
+	}
+	return artistID, genreID, albumID, nil
+}
+
+func getOrCreateTrackReferenceTx(ctx context.Context, tx *sql.Tx, table string, track *JSONTrack, field, defaultValue string) (int64, error) {
+	name := track.Artist
+	if field == "Artist" && name == "" {
+		track.Artist = defaultValue
+		name = track.Artist
+	}
+	if field == "Genre" {
+		name = track.Genre
+		if name == "" {
+			track.Genre = defaultValue
+			name = track.Genre
+		}
+	}
+	var id int64
+	err := tx.QueryRowContext(ctx, fmt.Sprintf("SELECT id FROM %s WHERE name = ?", table), name).Scan(&id)
+	if err == sql.ErrNoRows {
+		result, insertErr := tx.ExecContext(ctx, fmt.Sprintf("INSERT INTO %s (name) VALUES (?)", table), name)
+		if insertErr != nil {
+			return 0, fmt.Errorf("failed to insert %s: %w", strings.ToLower(field), insertErr)
+		}
+		id, err = result.LastInsertId()
+		if err != nil {
+			return 0, fmt.Errorf("failed to get %s ID: %w", strings.ToLower(field), err)
+		}
+	} else if err != nil {
+		return 0, fmt.Errorf("failed to get %s ID: %w", strings.ToLower(field), err)
+	}
+	return id, nil
+}
+
 // insertPlaylistTracksTx associates a track with its playlists
 func (dm *DatabaseManager) insertPlaylistTracksTx(
 	ctx context.Context,
@@ -489,35 +493,17 @@ func (dm *DatabaseManager) insertPlaylistTracksTx(
 ) error {
 	// For each playlist name, try to find it in our map or database
 	for _, playlistName := range playlistNames {
-		// First check if we have a playlist with this name in our name map
-		playlistID, found := playlistNameToID[playlistName]
-
-		if !found {
-			// Try to find by name in database
-			err := tx.QueryRowContext(ctx, "SELECT id FROM playlists WHERE name = ?", playlistName).Scan(&playlistID)
-			if err == sql.ErrNoRows {
-				// Create playlist if it doesn't exist (should rarely happen now)
-				dm.Logger.Info("Creating untracked playlist", zap.String("playlist", playlistName))
-				result, insertErr := tx.ExecContext(ctx, "INSERT INTO playlists (persistent_id, name, special_kind) VALUES (?, ?, ?)",
-					fmt.Sprintf("UNTRACKED_%s", strings.ReplaceAll(playlistName, " ", "_")),
-					playlistName, "none")
-				if insertErr != nil {
-					dm.Logger.Error("Failed to create playlist", zap.String("playlist", playlistName), zap.Error(insertErr))
-					continue
-				}
-				playlistID, err = result.LastInsertId()
-				if err != nil {
-					return fmt.Errorf("failed to get playlist ID: %w", err)
-				}
-			} else if err != nil {
-				dm.Logger.Error("Failed to find playlist", zap.String("playlist", playlistName), zap.Error(err))
-				continue
-			}
+		playlistID, shouldAssociate, err := dm.resolvePlaylistIDTx(ctx, tx, playlistName, playlistNameToID)
+		if err != nil {
+			return err
+		}
+		if !shouldAssociate {
+			continue
 		}
 
 		// Get the next position for this playlist
 		var maxPosition sql.NullInt64
-		err := tx.QueryRowContext(ctx, `
+		err = tx.QueryRowContext(ctx, `
 			SELECT MAX(position) FROM playlist_tracks WHERE playlist_id = ?
 		`, playlistID).Scan(&maxPosition)
 		if err != nil && err != sql.ErrNoRows {
@@ -541,6 +527,34 @@ func (dm *DatabaseManager) insertPlaylistTracksTx(
 	}
 
 	return nil
+}
+
+func (dm *DatabaseManager) resolvePlaylistIDTx(ctx context.Context, tx *sql.Tx, playlistName string, playlistNameToID map[string]int64) (int64, bool, error) {
+	if playlistID, found := playlistNameToID[playlistName]; found {
+		return playlistID, true, nil
+	}
+	var playlistID int64
+	err := tx.QueryRowContext(ctx, "SELECT id FROM playlists WHERE name = ?", playlistName).Scan(&playlistID)
+	if err == nil {
+		return playlistID, true, nil
+	}
+	if err != sql.ErrNoRows {
+		dm.Logger.Error("Failed to find playlist", zap.String("playlist", playlistName), zap.Error(err))
+		return 0, false, nil
+	}
+	dm.Logger.Info("Creating untracked playlist", zap.String("playlist", playlistName))
+	result, err := tx.ExecContext(ctx,
+		"INSERT INTO playlists (persistent_id, name, special_kind) VALUES (?, ?, ?)",
+		fmt.Sprintf("UNTRACKED_%s", strings.ReplaceAll(playlistName, " ", "_")), playlistName, "none")
+	if err != nil {
+		dm.Logger.Error("Failed to create playlist", zap.String("playlist", playlistName), zap.Error(err))
+		return 0, false, nil
+	}
+	playlistID, err = result.LastInsertId()
+	if err != nil {
+		return 0, false, fmt.Errorf("failed to get playlist ID: %w", err)
+	}
+	return playlistID, true, nil
 }
 
 // updateFTSIndexTx rebuilds the FTS index within a transaction
@@ -595,29 +609,32 @@ func (dm *DatabaseManager) BatchUpdateTracks(ctx context.Context, tracks []JSONT
 	defer genreStmt.Close()
 
 	for _, track := range tracks {
-		var trackID int64
-		// Use ID as PersistentID if PersistentID is empty (legacy format)
-		persistentID := track.PersistentID
-		if persistentID == "" {
-			persistentID = track.ID
-		}
-		err := tx.QueryRowContext(ctx, "SELECT id FROM tracks WHERE persistent_id = ?", persistentID).Scan(&trackID)
-		if err == nil {
-			// Update existing track
-			if _, updateErr := dm.updateTrackTx(ctx, tx, trackID, &track); updateErr != nil {
-				dm.Logger.Error("Error updating track", zap.String("track", track.Name), zap.Error(updateErr))
-			}
-		} else if err == sql.ErrNoRows {
-			// Insert new track
-			if _, insertErr := dm.insertTrackTx(ctx, tx, &track, artistStmt, genreStmt); insertErr != nil {
-				dm.Logger.Error("Error inserting track", zap.String("track", track.Name), zap.Error(insertErr))
-			}
-		} else {
-			dm.Logger.Error("Error checking track", zap.String("track", track.Name), zap.Error(err))
-		}
+		dm.batchUpdateTrackTx(ctx, tx, &track, artistStmt, genreStmt)
 	}
 
 	return tx.Commit()
+}
+
+func (dm *DatabaseManager) batchUpdateTrackTx(ctx context.Context, tx *sql.Tx, track *JSONTrack, artistStmt, genreStmt *sql.Stmt) {
+	persistentID := track.PersistentID
+	if persistentID == "" {
+		persistentID = track.ID
+	}
+	var trackID int64
+	err := tx.QueryRowContext(ctx, "SELECT id FROM tracks WHERE persistent_id = ?", persistentID).Scan(&trackID)
+	if err == nil {
+		if _, updateErr := dm.updateTrackTx(ctx, tx, trackID, track); updateErr != nil {
+			dm.Logger.Error("Error updating track", zap.String("track", track.Name), zap.Error(updateErr))
+		}
+		return
+	}
+	if err == sql.ErrNoRows {
+		if _, insertErr := dm.insertTrackTx(ctx, tx, track, artistStmt, genreStmt); insertErr != nil {
+			dm.Logger.Error("Error inserting track", zap.String("track", track.Name), zap.Error(insertErr))
+		}
+		return
+	}
+	dm.Logger.Error("Error checking track", zap.String("track", track.Name), zap.Error(err))
 }
 
 // UpsertPlaylist inserts or updates a playlist

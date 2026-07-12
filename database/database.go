@@ -345,69 +345,7 @@ func (dm *DatabaseManager) SearchTracks(ctx context.Context, query string, filte
 		filters.Limit = 15
 	}
 
-	// Build WHERE clause
-	var conditions []string
-	var args []interface{}
-
-	if query != "" {
-		conditions = append(conditions, "(t.name LIKE ? OR ar.name LIKE ? OR al.name LIKE ?)")
-		searchPattern := "%" + query + "%"
-		args = append(args, searchPattern, searchPattern, searchPattern)
-	}
-
-	if filters.Genre != "" {
-		conditions = append(conditions, "g.name = ?")
-		args = append(args, filters.Genre)
-	}
-
-	if filters.Artist != "" {
-		conditions = append(conditions, "ar.name = ?")
-		args = append(args, filters.Artist)
-	}
-
-	if filters.Album != "" {
-		conditions = append(conditions, "al.name = ?")
-		args = append(args, filters.Album)
-	}
-
-	if filters.Starred != nil && *filters.Starred {
-		conditions = append(conditions, "t.starred = 1")
-	}
-
-	if filters.MinRating > 0 {
-		conditions = append(conditions, "t.rating >= ?")
-		args = append(args, filters.MinRating)
-	}
-
-	if filters.StreamingOnly != nil && *filters.StreamingOnly {
-		conditions = append(conditions, "t.is_streaming = 1")
-	}
-
-	if filters.LocalOnly != nil && *filters.LocalOnly {
-		conditions = append(conditions, "t.is_streaming = 0")
-	}
-
-	whereClause := ""
-	if len(conditions) > 0 {
-		whereClause = "WHERE " + strings.Join(conditions, " AND ")
-	}
-
-	sqlQuery := fmt.Sprintf(`
-		SELECT
-			t.id, t.persistent_id, t.name, al.name, t.collection,
-			ar.name, g.name, t.rating, t.starred, t.ranking,
-			t.duration, t.play_count, t.last_played, t.date_added,
-			t.is_streaming, t.track_kind, t.stream_url
-		FROM tracks t
-		LEFT JOIN artists ar ON ar.id = t.artist_id
-		LEFT JOIN albums al ON al.id = t.album_id
-		LEFT JOIN genres g ON g.id = t.genre_id
-		%s
-		ORDER BY t.ranking DESC, t.name ASC
-		LIMIT ?
-	`, whereClause)
-
-	args = append(args, filters.Limit)
+	sqlQuery, args := buildTrackSearchQuery(query, filters, false)
 
 	rows, err := dm.DB.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
@@ -415,22 +353,7 @@ func (dm *DatabaseManager) SearchTracks(ctx context.Context, query string, filte
 	}
 	defer rows.Close()
 
-	var tracks []Track
-	for rows.Next() {
-		track := Track{}
-		err := rows.Scan(
-			&track.ID, &track.PersistentID, &track.Name, &track.Album, &track.Collection,
-			&track.Artist, &track.Genre, &track.Rating, &track.Starred, &track.Ranking,
-			&track.Duration, &track.PlayCount, &track.LastPlayed, &track.DateAdded,
-			&track.IsStreaming, &track.Kind, &track.StreamURL,
-		)
-		if err != nil {
-			return nil, fmt.Errorf("failed to scan track: %w", err)
-		}
-		tracks = append(tracks, track)
-	}
-
-	return tracks, nil
+	return scanTracks(rows)
 }
 
 // SearchTracksWithFTS searches tracks using full-text search
@@ -442,48 +365,19 @@ func (dm *DatabaseManager) SearchTracksWithFTS(ctx context.Context, query string
 		filters.Limit = 15
 	}
 
-	// Build WHERE clause for additional filters
-	var conditions []string
-	var args []interface{}
+	sqlQuery, args := buildTrackSearchQuery(query, filters, true)
 
-	// Add FTS match condition
-	if query != "" {
-		conditions = append(conditions, "t.id IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?)")
-		args = append(args, query)
+	rows, err := dm.DB.QueryContext(ctx, sqlQuery, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to query tracks with FTS: %w", err)
 	}
+	defer rows.Close()
 
-	if filters.Genre != "" {
-		conditions = append(conditions, "g.name = ?")
-		args = append(args, filters.Genre)
-	}
+	return scanTracks(rows)
+}
 
-	if filters.Artist != "" {
-		conditions = append(conditions, "ar.name = ?")
-		args = append(args, filters.Artist)
-	}
-
-	if filters.Album != "" {
-		conditions = append(conditions, "al.name = ?")
-		args = append(args, filters.Album)
-	}
-
-	if filters.Starred != nil && *filters.Starred {
-		conditions = append(conditions, "t.starred = 1")
-	}
-
-	if filters.MinRating > 0 {
-		conditions = append(conditions, "t.rating >= ?")
-		args = append(args, filters.MinRating)
-	}
-
-	if filters.StreamingOnly != nil && *filters.StreamingOnly {
-		conditions = append(conditions, "t.is_streaming = 1")
-	}
-
-	if filters.LocalOnly != nil && *filters.LocalOnly {
-		conditions = append(conditions, "t.is_streaming = 0")
-	}
-
+func buildTrackSearchQuery(query string, filters *SearchFilters, useFTS bool) (string, []interface{}) {
+	conditions, args := buildTrackSearchConditions(query, filters, useFTS)
 	whereClause := ""
 	if len(conditions) > 0 {
 		whereClause = "WHERE " + strings.Join(conditions, " AND ")
@@ -504,29 +398,75 @@ func (dm *DatabaseManager) SearchTracksWithFTS(ctx context.Context, query string
 		LIMIT ?
 	`, whereClause)
 
-	args = append(args, filters.Limit)
+	return sqlQuery, append(args, filters.Limit)
+}
 
-	rows, err := dm.DB.QueryContext(ctx, sqlQuery, args...)
-	if err != nil {
-		return nil, fmt.Errorf("failed to query tracks with FTS: %w", err)
+func buildTrackSearchConditions(query string, filters *SearchFilters, useFTS bool) ([]string, []interface{}) {
+	conditions, args := buildTrackQueryCondition(query, useFTS)
+	filterConditions, filterArgs := buildTrackFilterConditions(filters)
+	return append(conditions, filterConditions...), append(args, filterArgs...)
+}
+
+func buildTrackQueryCondition(query string, useFTS bool) ([]string, []interface{}) {
+	if query != "" {
+		if useFTS {
+			return []string{"t.id IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?)"}, []interface{}{query}
+		}
+		searchPattern := "%" + query + "%"
+		return []string{"(t.name LIKE ? OR ar.name LIKE ? OR al.name LIKE ?)"}, []interface{}{searchPattern, searchPattern, searchPattern}
 	}
-	defer rows.Close()
+	return nil, nil
+}
 
+func buildTrackFilterConditions(filters *SearchFilters) ([]string, []interface{}) {
+	var conditions []string
+	var args []interface{}
+	if filters.Genre != "" {
+		conditions = append(conditions, "g.name = ?")
+		args = append(args, filters.Genre)
+	}
+	if filters.Artist != "" {
+		conditions = append(conditions, "ar.name = ?")
+		args = append(args, filters.Artist)
+	}
+	if filters.Album != "" {
+		conditions = append(conditions, "al.name = ?")
+		args = append(args, filters.Album)
+	}
+	conditions, args = appendTrackBooleanFilterConditions(conditions, args, filters)
+	return conditions, args
+}
+
+func appendTrackBooleanFilterConditions(conditions []string, args []interface{}, filters *SearchFilters) ([]string, []interface{}) {
+	if filters.Starred != nil && *filters.Starred {
+		conditions = append(conditions, "t.starred = 1")
+	}
+	if filters.MinRating > 0 {
+		conditions = append(conditions, "t.rating >= ?")
+		args = append(args, filters.MinRating)
+	}
+	if filters.StreamingOnly != nil && *filters.StreamingOnly {
+		conditions = append(conditions, "t.is_streaming = 1")
+	}
+	if filters.LocalOnly != nil && *filters.LocalOnly {
+		conditions = append(conditions, "t.is_streaming = 0")
+	}
+	return conditions, args
+}
+
+func scanTracks(rows *sql.Rows) ([]Track, error) {
 	var tracks []Track
 	for rows.Next() {
 		track := Track{}
-		err := rows.Scan(
-			&track.ID, &track.PersistentID, &track.Name, &track.Album, &track.Collection,
+		err := rows.Scan(&track.ID, &track.PersistentID, &track.Name, &track.Album, &track.Collection,
 			&track.Artist, &track.Genre, &track.Rating, &track.Starred, &track.Ranking,
 			&track.Duration, &track.PlayCount, &track.LastPlayed, &track.DateAdded,
-			&track.IsStreaming, &track.Kind, &track.StreamURL,
-		)
+			&track.IsStreaming, &track.Kind, &track.StreamURL)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan track: %w", err)
 		}
 		tracks = append(tracks, track)
 	}
-
 	return tracks, nil
 }
 
@@ -606,42 +546,44 @@ func (dm *DatabaseManager) BatchInsertTracks(ctx context.Context, tracks []Track
 	defer trackStmt.Close()
 
 	for _, track := range tracks {
-		// Ensure artist, album, and genre exist
-		if track.Artist != "" {
-			if err := dm.upsertArtistTx(ctx, tx, track.Artist); err != nil {
-				return fmt.Errorf("failed to upsert artist: %w", err)
-			}
-		}
-
-		genre := track.Genre
-		if genre == "" {
-			genre = "Unknown"
-		}
-		if err := dm.upsertGenreTx(ctx, tx, genre); err != nil {
-			return fmt.Errorf("failed to upsert genre: %w", err)
-		}
-
-		if track.Album != "" && track.Artist != "" {
-			if err := dm.upsertAlbumTx(ctx, tx, track.Album, track.Artist, genre); err != nil {
-				return fmt.Errorf("failed to upsert album: %w", err)
-			}
-		}
-
-		// Insert track
-		_, err := trackStmt.ExecContext(ctx,
-			track.PersistentID, track.Name, track.Artist,
-			track.Album, track.Artist, genre,
-			track.Collection, track.Rating, track.Starred,
-			track.Ranking, track.Duration, track.PlayCount,
-			track.LastPlayed, track.DateAdded, track.IsStreaming,
-			track.Kind, track.StreamURL,
-		)
-		if err != nil {
-			return fmt.Errorf("failed to insert track '%s': %w", track.Name, err)
+		if err := dm.batchInsertTrackTx(ctx, tx, trackStmt, track); err != nil {
+			return err
 		}
 	}
 
 	return tx.Commit()
+}
+
+func (dm *DatabaseManager) batchInsertTrackTx(ctx context.Context, tx *sql.Tx, trackStmt *sql.Stmt, track Track) error {
+	if track.Artist != "" {
+		if err := dm.upsertArtistTx(ctx, tx, track.Artist); err != nil {
+			return fmt.Errorf("failed to upsert artist: %w", err)
+		}
+	}
+
+	genre := track.Genre
+	if genre == "" {
+		genre = "Unknown"
+	}
+	if err := dm.upsertGenreTx(ctx, tx, genre); err != nil {
+		return fmt.Errorf("failed to upsert genre: %w", err)
+	}
+
+	if track.Album != "" && track.Artist != "" {
+		if err := dm.upsertAlbumTx(ctx, tx, track.Album, track.Artist, genre); err != nil {
+			return fmt.Errorf("failed to upsert album: %w", err)
+		}
+	}
+
+	_, err := trackStmt.ExecContext(ctx,
+		track.PersistentID, track.Name, track.Artist, track.Album, track.Artist, genre,
+		track.Collection, track.Rating, track.Starred, track.Ranking, track.Duration, track.PlayCount,
+		track.LastPlayed, track.DateAdded, track.IsStreaming, track.Kind, track.StreamURL,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to insert track '%s': %w", track.Name, err)
+	}
+	return nil
 }
 
 // UpsertArtist inserts or updates an artist
@@ -903,36 +845,7 @@ func (dm *DatabaseManager) SearchRadioStations(ctx context.Context, query string
 		filters.Limit = 15
 	}
 
-	// Build search query
-	var conditions []string
-	args := []interface{}{}
-
-	// Use FTS5 only when a query is provided
-	if query != "" {
-		conditions = append(conditions, "rs.id IN (SELECT rowid FROM radio_stations_fts WHERE radio_stations_fts MATCH ?)")
-		args = append(args, query)
-	}
-
-	// Add filters
-	if filters.Genre != "" {
-		conditions = append(conditions, "g.name LIKE ?")
-		args = append(args, "%"+filters.Genre+"%")
-	}
-
-	if filters.Country != "" {
-		conditions = append(conditions, "rs.country = ?")
-		args = append(args, filters.Country)
-	}
-
-	if filters.Language != "" {
-		conditions = append(conditions, "rs.language = ?")
-		args = append(args, filters.Language)
-	}
-
-	whereClause := ""
-	if len(conditions) > 0 {
-		whereClause = "WHERE " + strings.Join(conditions, " AND ")
-	}
+	whereClause, args := buildRadioStationSearchWhere(query, filters)
 
 	searchQuery := fmt.Sprintf(`
 		SELECT DISTINCT rs.id, rs.name, rs.url, rs.description,
@@ -954,19 +867,45 @@ func (dm *DatabaseManager) SearchRadioStations(ctx context.Context, query string
 	}
 	defer rows.Close()
 
+	return scanRadioStations(rows, stations)
+}
+
+func buildRadioStationSearchWhere(query string, filters *RadioStationFilters) (string, []interface{}) {
+	var conditions []string
+	args := []interface{}{}
+	if query != "" {
+		conditions = append(conditions, "rs.id IN (SELECT rowid FROM radio_stations_fts WHERE radio_stations_fts MATCH ?)")
+		args = append(args, query)
+	}
+	if filters.Genre != "" {
+		conditions = append(conditions, "g.name LIKE ?")
+		args = append(args, "%"+filters.Genre+"%")
+	}
+	if filters.Country != "" {
+		conditions = append(conditions, "rs.country = ?")
+		args = append(args, filters.Country)
+	}
+	if filters.Language != "" {
+		conditions = append(conditions, "rs.language = ?")
+		args = append(args, filters.Language)
+	}
+	if len(conditions) == 0 {
+		return "", args
+	}
+	return "WHERE " + strings.Join(conditions, " AND "), args
+}
+
+func scanRadioStations(rows *sql.Rows, stations []RadioStation) ([]RadioStation, error) {
 	for rows.Next() {
 		var station RadioStation
-		err := rows.Scan(
-			&station.ID, &station.Name, &station.URL, &station.Description,
+		err := rows.Scan(&station.ID, &station.Name, &station.URL, &station.Description,
 			&station.Genre, &station.GenreID, &station.Homepage,
-			&station.VerifiedAt, &station.IsActive, &station.CreatedAt, &station.UpdatedAt,
-		)
+			&station.VerifiedAt, &station.IsActive, &station.CreatedAt, &station.UpdatedAt)
 		if err != nil {
 			return nil, fmt.Errorf("failed to scan radio station: %w", err)
 		}
 		stations = append(stations, station)
 	}
-
 	return stations, nil
 }
 
@@ -1015,48 +954,10 @@ func (dm *DatabaseManager) UpdateRadioStation(ctx context.Context, id int64, sta
 		}
 	}()
 
-	// Build query dynamically for partial updates
-	var queryParts []string
-	var args []interface{}
-
-	if station.Name != "" {
-		queryParts = append(queryParts, "name = ?")
-		args = append(args, station.Name)
+	query, args, err := dm.buildRadioStationUpdateQuery(ctx, id, station)
+	if err != nil {
+		return err
 	}
-	if station.URL != "" {
-		queryParts = append(queryParts, "url = ?")
-		args = append(args, station.URL)
-	}
-	if station.Description != "" {
-		queryParts = append(queryParts, "description = ?")
-		args = append(args, station.Description)
-	}
-	if station.Homepage != "" {
-		queryParts = append(queryParts, "homepage = ?")
-		args = append(args, station.Homepage)
-	}
-
-	// Handle genre update
-	if station.Genre != "" {
-		genreName := strings.Title(strings.ToLower(station.Genre))
-		genreID, genreErr := dm.GetOrCreateGenre(ctx, genreName)
-		if genreErr != nil {
-			return fmt.Errorf("failed to get or create genre: %w", genreErr)
-		}
-		queryParts = append(queryParts, "genre_id = ?")
-		args = append(args, genreID)
-	}
-
-	if len(queryParts) == 0 {
-		return fmt.Errorf("no fields to update")
-	}
-
-	// Add timestamp update
-	queryParts = append(queryParts, "updated_at = CURRENT_TIMESTAMP")
-
-	// Finalize query
-	query := fmt.Sprintf("UPDATE radio_stations SET %s WHERE id = ?", strings.Join(queryParts, ", "))
-	args = append(args, id)
 
 	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
@@ -1076,6 +977,40 @@ func (dm *DatabaseManager) UpdateRadioStation(ctx context.Context, id int64, sta
 	}
 
 	return tx.Commit()
+}
+
+func (dm *DatabaseManager) buildRadioStationUpdateQuery(ctx context.Context, id int64, station *RadioStation) (string, []interface{}, error) {
+	var queryParts []string
+	var args []interface{}
+	if station.Name != "" {
+		queryParts = append(queryParts, "name = ?")
+		args = append(args, station.Name)
+	}
+	if station.URL != "" {
+		queryParts = append(queryParts, "url = ?")
+		args = append(args, station.URL)
+	}
+	if station.Description != "" {
+		queryParts = append(queryParts, "description = ?")
+		args = append(args, station.Description)
+	}
+	if station.Homepage != "" {
+		queryParts = append(queryParts, "homepage = ?")
+		args = append(args, station.Homepage)
+	}
+	if station.Genre != "" {
+		genreID, err := dm.GetOrCreateGenre(ctx, strings.Title(strings.ToLower(station.Genre)))
+		if err != nil {
+			return "", nil, fmt.Errorf("failed to get or create genre: %w", err)
+		}
+		queryParts = append(queryParts, "genre_id = ?")
+		args = append(args, genreID)
+	}
+	if len(queryParts) == 0 {
+		return "", nil, fmt.Errorf("no fields to update")
+	}
+	queryParts = append(queryParts, "updated_at = CURRENT_TIMESTAMP")
+	return fmt.Sprintf("UPDATE radio_stations SET %s WHERE id = ?", strings.Join(queryParts, ", ")), append(args, id), nil
 }
 
 // DeleteRadioStation removes a radio station
@@ -1158,38 +1093,7 @@ func (dm *DatabaseManager) ImportRadioStations(ctx context.Context, stations []R
 
 	successCount := 0
 	for _, station := range stations {
-		// Validate URL protocol
-		if err := validateStationURL(station.URL); err != nil {
-			dm.Logger.Warn("Skipping station with invalid URL", zap.String("station", station.Name), zap.String("url", station.URL), zap.Error(err))
-			continue
-		}
-		if err := validateStationURL(station.Homepage); err != nil {
-			dm.Logger.Warn("Skipping station with invalid Homepage URL",
-				zap.String("station", station.Name), zap.String("url", station.Homepage), zap.Error(err))
-			continue
-		}
-
-		// Get or create genre (standardize to Title Case)
-		genreName := station.Genre
-		if genreName != "" {
-			genreName = strings.Title(strings.ToLower(genreName))
-		}
-
-		genreID, err := dm.GetOrCreateGenre(ctx, genreName)
-		if err != nil {
-			dm.Logger.Warn("failed to get or create genre for station", zap.String("station", station.Name), zap.Error(err))
-			continue
-		}
-
-		// Insert station (ignore duplicates)
-		_, err = tx.ExecContext(ctx, `
-			INSERT OR IGNORE INTO radio_stations (name, url, description, genre_id, homepage, is_active)
-			VALUES (?, ?, ?, ?, ?, ?)
-		`, station.Name, station.URL, station.Description, genreID, station.Homepage, true)
-
-		if err != nil {
-			dm.Logger.Warn("failed to insert station", zap.String("station", station.Name), zap.Error(err))
-		} else {
+		if dm.importRadioStation(ctx, tx, station) {
 			successCount++
 		}
 	}
@@ -1200,4 +1104,36 @@ func (dm *DatabaseManager) ImportRadioStations(ctx context.Context, stations []R
 
 	dm.Logger.Info("Successfully imported radio stations", zap.Int("successCount", successCount), zap.Int("totalCount", len(stations)))
 	return nil
+}
+
+func (dm *DatabaseManager) importRadioStation(ctx context.Context, tx *sql.Tx, station RadioStation) bool {
+	if err := validateStationURL(station.URL); err != nil {
+		dm.Logger.Warn("Skipping station with invalid URL", zap.String("station", station.Name), zap.String("url", station.URL), zap.Error(err))
+		return false
+	}
+	if err := validateStationURL(station.Homepage); err != nil {
+		dm.Logger.Warn("Skipping station with invalid Homepage URL",
+			zap.String("station", station.Name), zap.String("url", station.Homepage), zap.Error(err))
+		return false
+	}
+
+	genreName := station.Genre
+	if genreName != "" {
+		genreName = strings.Title(strings.ToLower(genreName))
+	}
+	genreID, err := dm.GetOrCreateGenre(ctx, genreName)
+	if err != nil {
+		dm.Logger.Warn("failed to get or create genre for station", zap.String("station", station.Name), zap.Error(err))
+		return false
+	}
+
+	_, err = tx.ExecContext(ctx, `
+		INSERT OR IGNORE INTO radio_stations (name, url, description, genre_id, homepage, is_active)
+		VALUES (?, ?, ?, ?, ?, ?)
+	`, station.Name, station.URL, station.Description, genreID, station.Homepage, true)
+	if err != nil {
+		dm.Logger.Warn("failed to insert station", zap.String("station", station.Name), zap.Error(err))
+		return false
+	}
+	return true
 }

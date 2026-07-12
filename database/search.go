@@ -114,102 +114,10 @@ func (sqb *SearchQueryBuilder) WithStats(includeStats bool) *SearchQueryBuilder 
 
 // Build constructs the SQL query and arguments
 func (sqb *SearchQueryBuilder) Build() (string, []interface{}, error) {
-	var conditions []string
-	var args []interface{}
-	var scoreColumns []string
+	conditions, args, scores := sqb.searchClauses()
+	conditions, args, scores = sqb.filterClauses(conditions, args, scores)
+	scores = append(scores, popularityScoreColumns()...)
 	orderByColumns := make([]string, 0, 3)
-
-	// Base relevance scoring
-	scoreColumns = append(scoreColumns, "0") // Base score
-
-	// FTS match condition for text queries
-	if sqb.query != "" && sqb.useFTS {
-		conditions = append(conditions, "t.id IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?)")
-		// Prepare FTS query - handle special characters and add wildcards
-		ftsQuery := prepareFTSQuery(sqb.query)
-		args = append(args, ftsQuery)
-
-		// Add FTS rank to scoring (already matched by the condition above)
-		scoreColumns = append(scoreColumns, "10")
-	} else if sqb.query != "" {
-		// Fallback to LIKE queries
-		conditions = append(conditions, "(t.name LIKE ? OR ar.name LIKE ? OR al.name LIKE ?)")
-		searchPattern := "%" + sqb.query + "%"
-		args = append(args, searchPattern, searchPattern, searchPattern)
-
-		// Add LIKE scoring
-		scoreColumns = append(scoreColumns, `
-			CASE WHEN LOWER(t.name) = LOWER(?) THEN 20
-			     WHEN LOWER(t.name) LIKE LOWER(?) THEN 10
-			     ELSE 0 END
-		`)
-		args = append(args, sqb.query, "%"+sqb.query+"%")
-
-		scoreColumns = append(scoreColumns, `
-			CASE WHEN LOWER(ar.name) = LOWER(?) THEN 15
-			     WHEN LOWER(ar.name) LIKE LOWER(?) THEN 8
-			     ELSE 0 END
-		`)
-		args = append(args, sqb.query, "%"+sqb.query+"%")
-	}
-
-	// Apply filters
-	if sqb.filters.Genre != "" {
-		conditions = append(conditions, "g.name = ?")
-		args = append(args, sqb.filters.Genre)
-	}
-
-	if sqb.filters.Artist != "" {
-		conditions = append(conditions, "ar.name = ?")
-		args = append(args, sqb.filters.Artist)
-	}
-
-	if sqb.filters.Album != "" {
-		conditions = append(conditions, "al.name = ?")
-		args = append(args, sqb.filters.Album)
-	}
-
-	if sqb.filters.Playlist != "" {
-		if sqb.filters.UsePlaylistID {
-			// Use persistent ID for playlist lookup
-			conditions = append(conditions, `
-				EXISTS (
-					SELECT 1 FROM playlist_tracks pt
-					JOIN playlists p ON p.id = pt.playlist_id
-					WHERE pt.track_id = t.id AND p.persistent_id = ?
-				)
-			`)
-		} else {
-			// Use playlist name
-			conditions = append(conditions, `
-				EXISTS (
-					SELECT 1 FROM playlist_tracks pt
-					JOIN playlists p ON p.id = pt.playlist_id
-					WHERE pt.track_id = t.id AND p.name = ?
-				)
-			`)
-		}
-		args = append(args, sqb.filters.Playlist)
-	}
-
-	if sqb.filters.Starred != nil && *sqb.filters.Starred {
-		conditions = append(conditions, "t.starred = 1")
-		scoreColumns = append(scoreColumns, "5") // Boost starred tracks
-	}
-
-	if sqb.filters.MinRating > 0 {
-		conditions = append(conditions, "t.rating >= ?")
-		args = append(args, sqb.filters.MinRating)
-	}
-
-	// Add popularity scoring (play count and recent plays)
-	scoreColumns = append(scoreColumns, "COALESCE(t.play_count * 0.1, 0)")
-	scoreColumns = append(scoreColumns, `
-		CASE WHEN t.last_played > datetime('now', '-7 days') THEN 5
-		     WHEN t.last_played > datetime('now', '-30 days') THEN 3
-		     WHEN t.last_played > datetime('now', '-90 days') THEN 1
-		     ELSE 0 END
-	`)
 
 	// Build WHERE clause
 	whereClause := ""
@@ -218,7 +126,7 @@ func (sqb *SearchQueryBuilder) Build() (string, []interface{}, error) {
 	}
 
 	// Calculate total score
-	totalScore := "(" + strings.Join(scoreColumns, " + ") + ")"
+	totalScore := "(" + strings.Join(scores, " + ") + ")"
 
 	// Build ORDER BY clause
 	orderByColumns = append(orderByColumns, totalScore+" DESC")
@@ -245,6 +153,58 @@ func (sqb *SearchQueryBuilder) Build() (string, []interface{}, error) {
 	args = append(args, sqb.filters.Limit)
 
 	return query, args, nil
+}
+
+func (sqb *SearchQueryBuilder) searchClauses() ([]string, []interface{}, []string) {
+	if sqb.query == "" {
+		return nil, nil, []string{"0"}
+	}
+	if sqb.useFTS {
+		return []string{"t.id IN (SELECT rowid FROM tracks_fts WHERE tracks_fts MATCH ?)"}, []interface{}{prepareFTSQuery(sqb.query)}, []string{"0", "10"}
+	}
+	pattern := "%" + sqb.query + "%"
+	conditions := []string{"(t.name LIKE ? OR ar.name LIKE ? OR al.name LIKE ?)"}
+	args := []interface{}{pattern, pattern, pattern, sqb.query, pattern, sqb.query, pattern}
+	scores := []string{"0", trackNameScore, artistNameScore}
+	return conditions, args, scores
+}
+
+func (sqb *SearchQueryBuilder) filterClauses(conditions []string, args []interface{}, scores []string) ([]string, []interface{}, []string) {
+	for _, filter := range []struct{ column, value string }{{"g.name", sqb.filters.Genre}, {"ar.name", sqb.filters.Artist}, {"al.name", sqb.filters.Album}} {
+		if filter.value != "" {
+			conditions, args = append(conditions, filter.column+" = ?"), append(args, filter.value)
+		}
+	}
+	if sqb.filters.Playlist != "" {
+		conditions, args = append(conditions, sqb.playlistClause()), append(args, sqb.filters.Playlist)
+	}
+	if sqb.filters.Starred != nil && *sqb.filters.Starred {
+		conditions, scores = append(conditions, "t.starred = 1"), append(scores, "5")
+	}
+	if sqb.filters.MinRating > 0 {
+		conditions, args = append(conditions, "t.rating >= ?"), append(args, sqb.filters.MinRating)
+	}
+	return conditions, args, scores
+}
+
+func (sqb *SearchQueryBuilder) playlistClause() string {
+	column := "p.name"
+	if sqb.filters.UsePlaylistID {
+		column = "p.persistent_id"
+	}
+	return "EXISTS (SELECT 1 FROM playlist_tracks pt JOIN playlists p ON p.id = pt.playlist_id WHERE pt.track_id = t.id AND " + column + " = ?)"
+}
+
+const trackNameScore = `CASE WHEN LOWER(t.name) = LOWER(?) THEN 20 WHEN LOWER(t.name) LIKE LOWER(?) THEN 10 ELSE 0 END`
+const artistNameScore = `CASE WHEN LOWER(ar.name) = LOWER(?) THEN 15 WHEN LOWER(ar.name) LIKE LOWER(?) THEN 8 ELSE 0 END`
+
+func popularityScoreColumns() []string {
+	return []string{
+		"COALESCE(t.play_count * 0.1, 0)",
+		`CASE WHEN t.last_played > datetime('now', '-7 days') THEN 5
+		  WHEN t.last_played > datetime('now', '-30 days') THEN 3
+		  WHEN t.last_played > datetime('now', '-90 days') THEN 1 ELSE 0 END`,
+	}
 }
 
 // prepareFTSQuery prepares a query string for FTS5
