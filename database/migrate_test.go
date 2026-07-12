@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -92,20 +93,20 @@ func TestMigrateFromJSON(t *testing.T) {
 		}
 
 		// Create database manager
-		dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+		dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 		if err != nil {
 			t.Fatalf("Failed to create database: %v", err)
 		}
 		defer dm.Close()
 
 		// Perform migration
-		err = dm.MigrateFromJSON(cacheDir, nil)
+		err = dm.MigrateFromJSON(context.Background(), cacheDir, nil)
 		if err != nil {
 			t.Fatalf("Migration failed: %v", err)
 		}
 
 		// Verify migration
-		stats, err := dm.GetStats()
+		stats, err := dm.GetStats(context.Background())
 		if err != nil {
 			t.Fatalf("Failed to get stats: %v", err)
 		}
@@ -119,7 +120,7 @@ func TestMigrateFromJSON(t *testing.T) {
 		}
 
 		// Verify track data
-		track, err := dm.GetTrackByPersistentID("PERSIST001")
+		track, err := dm.GetTrackByPersistentID(context.Background(), "PERSIST001")
 		if err != nil {
 			t.Fatalf("Failed to get track: %v", err)
 		}
@@ -159,7 +160,7 @@ func TestMigrateFromJSON(t *testing.T) {
 
 		// Create new database
 		dbPath2 := filepath.Join(tmpDir, "test2.db")
-		dm, err := NewDatabaseManager(dbPath2, zap.NewNop())
+		dm, err := NewDatabaseManager(context.Background(), dbPath2, zap.NewNop())
 		if err != nil {
 			t.Fatalf("Failed to create database: %v", err)
 		}
@@ -167,7 +168,7 @@ func TestMigrateFromJSON(t *testing.T) {
 
 		// Perform migration
 		var callbackCalled bool
-		err = dm.MigrateFromJSON(cacheDir, func(p MigrationProgress) {
+		err = dm.MigrateFromJSON(context.Background(), cacheDir, func(p MigrationProgress) {
 			callbackCalled = true
 			t.Logf("Progress: %d/%d tracks, %d/%d playlists",
 				p.ProcessedTracks, p.TotalTracks,
@@ -182,7 +183,7 @@ func TestMigrateFromJSON(t *testing.T) {
 		}
 
 		// Verify migration
-		stats, err := dm.GetStats()
+		stats, err := dm.GetStats(context.Background())
 		if err != nil {
 			t.Fatalf("Failed to get stats: %v", err)
 		}
@@ -197,7 +198,7 @@ func TestMigrateFromJSON(t *testing.T) {
 		}
 
 		// Verify playlists were created
-		playlists, err := dm.ListPlaylists()
+		playlists, err := dm.ListPlaylists(context.Background())
 		if err != nil {
 			t.Fatalf("Failed to list playlists: %v", err)
 		}
@@ -220,13 +221,13 @@ func TestMigrateFromJSON(t *testing.T) {
 	t.Run("MissingCacheFiles", func(t *testing.T) {
 		nonExistentDir := filepath.Join(tmpDir, "nonexistent")
 		dbPath3 := filepath.Join(tmpDir, "test3.db")
-		dm, err := NewDatabaseManager(dbPath3, zap.NewNop())
+		dm, err := NewDatabaseManager(context.Background(), dbPath3, zap.NewNop())
 		if err != nil {
 			t.Fatalf("Failed to create database: %v", err)
 		}
 		defer dm.Close()
 
-		err = dm.MigrateFromJSON(nonExistentDir, nil)
+		err = dm.MigrateFromJSON(context.Background(), nonExistentDir, nil)
 		if err == nil {
 			t.Error("Expected error for missing cache directory")
 		}
@@ -238,7 +239,7 @@ func TestPopulateFromRefreshScript(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -292,7 +293,7 @@ func TestPopulateFromRefreshScript(t *testing.T) {
 
 	// Populate database
 	progressUpdates := 0
-	err = dm.PopulateFromRefreshScript(response, func(p MigrationProgress) {
+	err = dm.PopulateFromRefreshScript(context.Background(), response, func(p MigrationProgress) {
 		progressUpdates++
 		t.Logf("Progress: %d/%d tracks, %d/%d playlists, elapsed: %v",
 			p.ProcessedTracks, p.TotalTracks,
@@ -309,7 +310,7 @@ func TestPopulateFromRefreshScript(t *testing.T) {
 	}
 
 	// Verify data
-	stats, err := dm.GetStats()
+	stats, err := dm.GetStats(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to get stats: %v", err)
 	}
@@ -323,7 +324,7 @@ func TestPopulateFromRefreshScript(t *testing.T) {
 	}
 
 	// Verify FTS index
-	tracks, err := dm.SearchTracksWithFTS("Direct", nil)
+	tracks, err := dm.SearchTracksWithFTS(context.Background(), "Direct", nil)
 	if err != nil {
 		t.Fatalf("FTS search failed: %v", err)
 	}
@@ -338,7 +339,7 @@ func TestBatchOperations(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -360,7 +361,7 @@ func TestBatchOperations(t *testing.T) {
 	}
 
 	start := time.Now()
-	err = dm.BatchInsertTracks(tracks)
+	err = dm.BatchInsertTracks(context.Background(), tracks)
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -370,7 +371,7 @@ func TestBatchOperations(t *testing.T) {
 	t.Logf("Batch insert of 100 tracks took %v", elapsed)
 
 	// Verify all tracks were inserted
-	stats, err := dm.GetStats()
+	stats, err := dm.GetStats(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to get stats: %v", err)
 	}
@@ -395,7 +396,7 @@ func TestBatchOperations(t *testing.T) {
 	}
 
 	start = time.Now()
-	err = dm.BatchUpdateTracks(jsonTracks)
+	err = dm.BatchUpdateTracks(context.Background(), jsonTracks)
 	elapsed = time.Since(start)
 
 	if err != nil {
@@ -405,7 +406,7 @@ func TestBatchOperations(t *testing.T) {
 	t.Logf("Batch update of 50 tracks took %v", elapsed)
 
 	// Verify updates
-	track, err := dm.GetTrackByPersistentID("BATCH_000")
+	track, err := dm.GetTrackByPersistentID(context.Background(), "BATCH_000")
 	if err != nil {
 		t.Fatalf("Failed to get updated track: %v", err)
 	}
@@ -424,7 +425,7 @@ func TestPlaylistOperations(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -437,7 +438,7 @@ func TestPlaylistOperations(t *testing.T) {
 		{PersistentID: "TRACK003", Name: "Song 3", Artist: "Artist", Album: "Album"},
 	}
 
-	err = dm.BatchInsertTracks(testTracks)
+	err = dm.BatchInsertTracks(context.Background(), testTracks)
 	if err != nil {
 		t.Fatalf("Failed to insert test tracks: %v", err)
 	}
@@ -445,7 +446,7 @@ func TestPlaylistOperations(t *testing.T) {
 	// Get track IDs
 	var trackIDs []int64
 	for _, track := range testTracks {
-		dbTrack, _ := dm.GetTrackByPersistentID(track.PersistentID)
+		dbTrack, _ := dm.GetTrackByPersistentID(context.Background(), track.PersistentID)
 		trackIDs = append(trackIDs, dbTrack.ID)
 	}
 
@@ -457,25 +458,25 @@ func TestPlaylistOperations(t *testing.T) {
 		TrackCount:  3,
 	}
 
-	err = dm.UpsertPlaylist(playlist)
+	err = dm.UpsertPlaylist(context.Background(), playlist)
 	if err != nil {
 		t.Fatalf("Failed to create playlist: %v", err)
 	}
 
 	// Get playlist from database
-	dbPlaylist, err := dm.GetPlaylistByPersistentID("PLAYLIST001")
+	dbPlaylist, err := dm.GetPlaylistByPersistentID(context.Background(), "PLAYLIST001")
 	if err != nil {
 		t.Fatalf("Failed to get playlist: %v", err)
 	}
 
 	// Associate tracks with playlist
-	err = dm.BatchInsertPlaylistTracks(dbPlaylist.ID, trackIDs)
+	err = dm.BatchInsertPlaylistTracks(context.Background(), dbPlaylist.ID, trackIDs)
 	if err != nil {
 		t.Fatalf("Failed to associate tracks with playlist: %v", err)
 	}
 
 	// Get playlist tracks
-	tracks, err := dm.GetPlaylistTracks("PLAYLIST001", true)
+	tracks, err := dm.GetPlaylistTracks(context.Background(), "PLAYLIST001", true)
 	if err != nil {
 		t.Fatalf("Failed to get playlist tracks: %v", err)
 	}
@@ -495,20 +496,20 @@ func TestPlaylistOperations(t *testing.T) {
 	// Test SyncPlaylist
 	// Remove one track and add a new one
 	newTrack := Track{PersistentID: "TRACK004", Name: "Song 4", Artist: "Artist", Album: "Album"}
-	err = dm.BatchInsertTracks([]Track{newTrack})
+	err = dm.BatchInsertTracks(context.Background(), []Track{newTrack})
 	if err != nil {
 		t.Fatalf("Failed to insert new track: %v", err)
 	}
 
 	newTrackPersistentIDs := []string{"TRACK001", "TRACK003", "TRACK004"} // Remove track 2, add track 4
 
-	err = dm.SyncPlaylist("PLAYLIST001", newTrackPersistentIDs)
+	err = dm.SyncPlaylist(context.Background(), "PLAYLIST001", newTrackPersistentIDs)
 	if err != nil {
 		t.Fatalf("Failed to sync playlist: %v", err)
 	}
 
 	// Verify sync
-	tracks, err = dm.GetPlaylistTracks("PLAYLIST001", true)
+	tracks, err = dm.GetPlaylistTracks(context.Background(), "PLAYLIST001", true)
 	if err != nil {
 		t.Fatalf("Failed to get playlist tracks after sync: %v", err)
 	}
@@ -576,25 +577,25 @@ func TestMigrationValidation(t *testing.T) {
 	}
 
 	// Create database and migrate
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
 	defer dm.Close()
 
-	err = dm.MigrateFromJSON(cacheDir, nil)
+	err = dm.MigrateFromJSON(context.Background(), cacheDir, nil)
 	if err != nil {
 		t.Fatalf("Migration failed: %v", err)
 	}
 
 	// Validate migration
-	valid, issues := dm.ValidateMigration(cacheDir)
+	valid, issues := dm.ValidateMigration(context.Background(), cacheDir)
 	if !valid {
 		t.Errorf("Migration validation failed: %v", issues)
 	}
 
 	// Verify unicode data
-	track, err := dm.GetTrackByPersistentID("PERSIST_UNI001")
+	track, err := dm.GetTrackByPersistentID(context.Background(), "PERSIST_UNI001")
 	if err != nil {
 		t.Fatalf("Failed to get unicode track: %v", err)
 	}
@@ -613,7 +614,7 @@ func BenchmarkBatchInsert(b *testing.B) {
 	tmpDir := b.TempDir()
 	dbPath := filepath.Join(tmpDir, "bench.db")
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		b.Fatalf("Failed to create database: %v", err)
 	}
@@ -639,7 +640,7 @@ func BenchmarkBatchInsert(b *testing.B) {
 			tracks[j].PersistentID = fmt.Sprintf("BENCH_%d_%06d", i, j)
 		}
 
-		if err := dm.BatchInsertTracks(tracks); err != nil {
+		if err := dm.BatchInsertTracks(context.Background(), tracks); err != nil {
 			b.Fatalf("Batch insert failed: %v", err)
 		}
 	}

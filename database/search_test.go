@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -180,7 +181,7 @@ func TestDatabaseSearchWithFTS(t *testing.T) {
 	dbPath := filepath.Join(os.TempDir(), "test_search.db")
 	defer os.Remove(dbPath)
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -248,7 +249,7 @@ func TestDatabaseSearchWithFTS(t *testing.T) {
 	}
 
 	// Insert test tracks
-	err = dm.BatchInsertTracks(testTracks)
+	err = dm.BatchInsertTracks(context.Background(), testTracks)
 	if err != nil {
 		t.Fatalf("Failed to insert test tracks: %v", err)
 	}
@@ -332,7 +333,7 @@ func TestDatabaseSearchWithFTS(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			tracks, err := sm.SearchTracksOptimized(tt.query, tt.filters)
+			tracks, err := sm.SearchTracksOptimized(context.Background(), tt.query, tt.filters)
 			if (err != nil) != tt.expectError {
 				t.Errorf("SearchTracksOptimized() error = %v, expectError %v", err, tt.expectError)
 				return
@@ -359,7 +360,7 @@ func TestSearchPerformance(t *testing.T) {
 	dbPath := filepath.Join(os.TempDir(), "test_perf.db")
 	defer os.Remove(dbPath)
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -389,7 +390,7 @@ func TestSearchPerformance(t *testing.T) {
 		if end > len(tracks) {
 			end = len(tracks)
 		}
-		if err := dm.BatchInsertTracks(tracks[i:end]); err != nil {
+		if err := dm.BatchInsertTracks(context.Background(), tracks[i:end]); err != nil {
 			t.Fatalf("Failed to insert batch: %v", err)
 		}
 	}
@@ -407,7 +408,7 @@ func TestSearchPerformance(t *testing.T) {
 
 	for _, query := range searchQueries {
 		start := time.Now()
-		results, err := sm.SearchTracksOptimized(query, &SearchFilters{Limit: 15})
+		results, err := sm.SearchTracksOptimized(context.Background(), query, &SearchFilters{Limit: 15})
 		duration := time.Since(start)
 
 		if err != nil {
@@ -425,11 +426,11 @@ func TestSearchPerformance(t *testing.T) {
 	// Test cached search performance
 	for _, query := range searchQueries {
 		// First call to populate cache
-		sm.SearchWithCache(query, &SearchFilters{Limit: 15})
+		sm.SearchWithCache(context.Background(), query, &SearchFilters{Limit: 15})
 
 		// Second call should hit cache
 		start := time.Now()
-		results, err := sm.SearchWithCache(query, &SearchFilters{Limit: 15})
+		results, err := sm.SearchWithCache(context.Background(), query, &SearchFilters{Limit: 15})
 		duration := time.Since(start)
 
 		if err != nil {
@@ -457,7 +458,7 @@ func TestSearchMetrics(t *testing.T) {
 	dbPath := filepath.Join(os.TempDir(), "test_metrics.db")
 	defer os.Remove(dbPath)
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database: %v", err)
 	}
@@ -471,14 +472,14 @@ func TestSearchMetrics(t *testing.T) {
 		Album:        "Test Album",
 		Genre:        "Test",
 	}
-	dm.BatchInsertTracks([]Track{testTrack})
+	dm.BatchInsertTracks(context.Background(), []Track{testTrack})
 
 	sm := NewSearchManager(dm)
 
 	// Perform some searches
-	sm.SearchWithCache("test", nil)
-	sm.SearchWithCache("test", nil) // Cache hit
-	sm.SearchTracksOptimized("artist", nil)
+	sm.SearchWithCache(context.Background(), "test", nil)
+	sm.SearchWithCache(context.Background(), "test", nil) // Cache hit
+	sm.SearchTracksOptimized(context.Background(), "artist", nil)
 
 	metrics := sm.GetMetrics()
 
@@ -509,7 +510,7 @@ func BenchmarkDatabaseSearch(b *testing.B) {
 	dbPath := filepath.Join(os.TempDir(), "bench_search.db")
 	defer os.Remove(dbPath)
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		b.Fatalf("Failed to create database: %v", err)
 	}
@@ -534,7 +535,7 @@ func BenchmarkDatabaseSearch(b *testing.B) {
 		if end > len(tracks) {
 			end = len(tracks)
 		}
-		dm.BatchInsertTracks(tracks[i:end])
+		dm.BatchInsertTracks(context.Background(), tracks[i:end])
 	}
 
 	sm := NewSearchManager(dm)
@@ -543,7 +544,7 @@ func BenchmarkDatabaseSearch(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			query := fmt.Sprintf("Track %d", i%100)
-			sm.SearchTracksOptimized(query, &SearchFilters{Limit: 15})
+			sm.SearchTracksOptimized(context.Background(), query, &SearchFilters{Limit: 15})
 		}
 	})
 
@@ -551,7 +552,7 @@ func BenchmarkDatabaseSearch(b *testing.B) {
 		b.ResetTimer()
 		for i := 0; i < b.N; i++ {
 			query := fmt.Sprintf("Artist %d", i%10) // Use fewer queries to test cache
-			sm.SearchWithCache(query, &SearchFilters{Limit: 15})
+			sm.SearchWithCache(context.Background(), query, &SearchFilters{Limit: 15})
 		}
 	})
 
@@ -562,7 +563,7 @@ func BenchmarkDatabaseSearch(b *testing.B) {
 				Genre: []string{"Rock", "Jazz", "Pop"}[i%3],
 				Limit: 15,
 			}
-			sm.SearchTracksOptimized("", filters)
+			sm.SearchTracksOptimized(context.Background(), "", filters)
 		}
 	})
 }

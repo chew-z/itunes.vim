@@ -29,7 +29,7 @@ func main() {
 	defer func() { _ = logger.Sync() }() //nolint:errcheck // stderr sync errors are expected on macOS
 
 	// Initialize database (now default mode)
-	client, err = itunes.NewClient(logger)
+	client, err = itunes.NewClient(context.Background(), logger)
 	if err != nil {
 		logger.Fatal("Failed to initialize database", zap.Error(err))
 	}
@@ -243,7 +243,7 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	}
 
 	// Search using database (now default)
-	tracks, err := client.SearchTracks(query)
+	tracks, err := client.SearchTracks(ctx, query)
 	if err != nil {
 		var itunesErr *itunes.ITunesError
 		if errors.As(err, &itunesErr) && itunesErr.Kind == itunes.ErrNoTracksFound {
@@ -316,13 +316,13 @@ func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 	cacheDir := filepath.Join(os.TempDir(), "itunes-cache")
 
 	// Migrate from the enhanced JSON file (or fallback to legacy)
-	err = client.MigrateFromJSON(cacheDir, nil)
+	err = client.MigrateFromJSON(ctx, cacheDir, nil)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to migrate data to database: %v", err)), nil
 	}
 
 	// Get database statistics
-	stats, err := client.GetDatabaseStats()
+	stats, err := client.GetDatabaseStats(ctx)
 	if err != nil {
 		return mcp.NewToolResultText("Library refresh and database update completed, but couldn't get statistics."), nil
 	}
@@ -343,7 +343,7 @@ func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 
 // Resource handlers for cache access
 func dbStatsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	stats, err := client.GetDatabaseStats()
+	stats, err := client.GetDatabaseStats(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database stats: %w", err)
 	}
@@ -363,7 +363,7 @@ func dbStatsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp
 }
 
 func listPlaylistsHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	playlists, err := client.ListPlaylists()
+	playlists, err := client.ListPlaylists(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list playlists: %v", err)), nil
 	}
@@ -404,7 +404,7 @@ func getPlaylistTracksHandler(ctx context.Context, request mcp.CallToolRequest) 
 
 	useID := request.GetBool("use_id", false)
 
-	tracks, err := client.GetPlaylistTracks(playlist, useID)
+	tracks, err := client.GetPlaylistTracks(ctx, playlist, useID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get playlist tracks: %v", err)), nil
 	}
@@ -474,7 +474,7 @@ func searchAdvancedHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 
 	// Search using database with filters
-	tracks, err := client.SearchTracksFromDatabase(query, filters)
+	tracks, err := client.SearchTracksFromDatabase(ctx, query, filters)
 	if err != nil {
 		var itunesErr *itunes.ITunesError
 		if errors.As(err, &itunesErr) && itunesErr.Kind == itunes.ErrNoTracksFound {
@@ -491,6 +491,7 @@ func searchAdvancedHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 	return mcp.NewToolResultText(string(result)), nil
 }
 
+//nolint:dupl // The MCP request and response shape intentionally mirrors searchStationsHandler.
 func playStreamHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var params struct {
 		URL string `json:"url"`
@@ -524,6 +525,7 @@ func playStreamHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 	return mcp.NewToolResultText(string(resultJSON)), nil
 }
 
+//nolint:dupl // The MCP request and response shape intentionally mirrors playStreamHandler.
 func searchStationsHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	var params struct {
 		Query string `json:"query"`
@@ -543,7 +545,7 @@ func searchStationsHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 
 	// Search for stations using the new function
-	result, err := client.SearchStations(params.Query)
+	result, err := client.SearchStations(ctx, params.Query)
 	if err != nil {
 		return mcp.NewToolResultError("Failed to search stations: " + err.Error()), nil
 	}
@@ -558,7 +560,7 @@ func searchStationsHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 }
 
 func playlistsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	playlists, err := client.ListPlaylists()
+	playlists, err := client.ListPlaylists(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get playlists: %w", err)
 	}

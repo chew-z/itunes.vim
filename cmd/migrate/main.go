@@ -177,7 +177,7 @@ func migrateFromCache() error {
 	}
 
 	// Open database
-	dbManager, err := database.NewDatabaseManager(expandPath(*dbPath), logger)
+	dbManager, err := database.NewDatabaseManager(context.Background(), expandPath(*dbPath), logger)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -185,19 +185,19 @@ func migrateFromCache() error {
 
 	// Run migration
 	fmt.Println("Starting migration to SQLite database...")
-	if migrationErr := dbManager.MigrateFromJSON(*cacheDir, progressReporter(*verbose)); migrationErr != nil {
+	if migrationErr := dbManager.MigrateFromJSON(context.Background(), *cacheDir, progressReporter(*verbose)); migrationErr != nil {
 		return fmt.Errorf("migration failed: %w", migrationErr)
 	}
 
 	// Validate migration
 	fmt.Println("\nValidating migration...")
-	valid, issues := dbManager.ValidateMigration(*cacheDir)
+	valid, issues := dbManager.ValidateMigration(context.Background(), *cacheDir)
 	if !valid {
 		return fmt.Errorf("migration validation failed: %s", strings.Join(issues, "; "))
 	}
 
 	// Get final stats
-	stats, err := dbManager.GetStats()
+	stats, err := dbManager.GetStats(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to get database stats: %w", err)
 	}
@@ -249,7 +249,7 @@ func migrateFromScript() error {
 		len(enhanced.Data.Tracks), len(enhanced.Data.Playlists))
 
 	// Open database
-	dbManager, err := database.NewDatabaseManager(expandPath(*dbPath), logger)
+	dbManager, err := database.NewDatabaseManager(context.Background(), expandPath(*dbPath), logger)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
@@ -257,13 +257,13 @@ func migrateFromScript() error {
 
 	// Populate database
 	fmt.Println("Populating database...")
-	if err := dbManager.PopulateFromRefreshScript(&enhanced, progressReporter(*verbose)); err != nil {
+	if err := dbManager.PopulateFromRefreshScript(context.Background(), &enhanced, progressReporter(*verbose)); err != nil {
 		return fmt.Errorf("failed to populate database: %w", err)
 	}
 
 	// Validate
 	fmt.Println("\nValidating migration...")
-	valid, issues := dbManager.ValidateMigration(*cacheDir)
+	valid, issues := dbManager.ValidateMigration(context.Background(), *cacheDir)
 	if !valid {
 		return fmt.Errorf("migration validation failed: %s", strings.Join(issues, "; "))
 	}
@@ -352,14 +352,14 @@ func validateDatabase() error {
 	logger.Info("Validating database", zap.String("dbPath", *dbPath))
 
 	// Open database
-	dm, err := database.NewDatabaseManager(expandPath(*dbPath), logger)
+	dm, err := database.NewDatabaseManager(context.Background(), expandPath(*dbPath), logger)
 	if err != nil {
 		return fmt.Errorf("failed to open database: %w", err)
 	}
 	defer dm.Close()
 
 	// Get statistics
-	stats, err := dm.GetStats()
+	stats, err := dm.GetStats(context.Background())
 	if err != nil {
 		return fmt.Errorf("failed to get database stats: %w", err)
 	}
@@ -409,7 +409,7 @@ func validateDatabase() error {
 	searchTerms := []string{"love", "blue", "jazz", "rock", "classical"}
 
 	for _, term := range searchTerms {
-		tracks, searchErr := dm.SearchTracksWithFTS(term, &database.SearchFilters{Limit: 5})
+		tracks, searchErr := dm.SearchTracksWithFTS(context.Background(), term, &database.SearchFilters{Limit: 5})
 		if searchErr != nil {
 			fmt.Printf("  ✗ Search for '%s' failed: %v\n", term, searchErr)
 		} else {

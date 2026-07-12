@@ -54,7 +54,7 @@ func main() {
 	command := os.Args[1]
 
 	// Initialize database (now default mode)
-	client, err = itunes.NewClient(logger)
+	client, err = itunes.NewClient(context.Background(), logger)
 	if err != nil {
 		logger.Fatal("Failed to initialize database", zap.Error(err))
 	}
@@ -77,7 +77,7 @@ func main() {
 		query := os.Args[2]
 
 		// Search using database
-		tracks, err := client.SearchTracks(query)
+		tracks, err := client.SearchTracks(context.Background(), query)
 		if err != nil {
 			fmt.Printf("Error searching tracks: %v\n", err)
 			return
@@ -153,7 +153,7 @@ func main() {
 		}
 		query := os.Args[2]
 
-		result, err := client.SearchStations(query)
+		result, err := client.SearchStations(context.Background(), query)
 		if err != nil {
 			fmt.Printf("Error searching stations: %v\n", err)
 			return
@@ -356,7 +356,7 @@ func handleAddStation(args []string) error {
 		Homepage:    flags["homepage"],
 	}
 
-	return client.AddRadioStation(station)
+	return client.AddRadioStation(context.Background(), station)
 }
 
 func handleUpdateStation(args []string) error {
@@ -379,7 +379,7 @@ func handleUpdateStation(args []string) error {
 	}
 
 	// Get existing station
-	existingStation, err := client.GetRadioStationByID(id)
+	existingStation, err := client.GetRadioStationByID(context.Background(), id)
 	if err != nil {
 		return fmt.Errorf("failed to get station: %w", err)
 	}
@@ -404,7 +404,7 @@ func handleUpdateStation(args []string) error {
 		existingStation.Homepage = homepage
 	}
 
-	return client.UpdateRadioStation(id, existingStation)
+	return client.UpdateRadioStation(context.Background(), id, existingStation)
 }
 
 func handleDeleteStation(idStr string) error {
@@ -413,7 +413,7 @@ func handleDeleteStation(idStr string) error {
 		return fmt.Errorf("invalid station ID: %v", err)
 	}
 
-	return client.DeleteRadioStation(id)
+	return client.DeleteRadioStation(context.Background(), id)
 }
 
 func handleImportStations(filename string) error {
@@ -438,12 +438,12 @@ func handleImportStations(filename string) error {
 		}
 	}
 
-	return client.ImportRadioStations(stations)
+	return client.ImportRadioStations(context.Background(), stations)
 }
 
 func handleExportStations(filename string) error {
 	// Get all stations
-	stations, err := client.SearchRadioStations("", &database.RadioStationFilters{Limit: 1000})
+	stations, err := client.SearchRadioStations(context.Background(), "", &database.RadioStationFilters{Limit: 1000})
 	if err != nil {
 		return fmt.Errorf("failed to get stations: %w", err)
 	}
@@ -460,7 +460,7 @@ func handleExportStations(filename string) error {
 
 func handleListStations() error {
 	// Get all stations
-	stations, err := client.SearchRadioStations("", &database.RadioStationFilters{Limit: 100})
+	stations, err := client.SearchRadioStations(context.Background(), "", &database.RadioStationFilters{Limit: 100})
 	if err != nil {
 		return fmt.Errorf("failed to get stations: %w", err)
 	}

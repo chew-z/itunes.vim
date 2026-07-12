@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"math/rand"
@@ -19,14 +20,14 @@ func TestDatabaseManager(t *testing.T) {
 	dbPath := filepath.Join(tmpDir, "test.db")
 
 	// Create database manager
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database manager: %v", err)
 	}
 	defer dm.Close()
 
 	// Verify schema version
-	version, err := GetSchemaVersion(dm.DB)
+	version, err := GetSchemaVersion(context.Background(), dm.DB)
 	if err != nil {
 		t.Fatalf("Failed to get schema version: %v", err)
 	}
@@ -35,7 +36,7 @@ func TestDatabaseManager(t *testing.T) {
 	}
 
 	// Test stats on empty database
-	stats, err := dm.GetStats()
+	stats, err := dm.GetStats(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to get stats: %v", err)
 	}
@@ -56,12 +57,12 @@ func TestSchemaIdempotency(t *testing.T) {
 			t.Fatalf("Failed to open database: %v", err)
 		}
 
-		err = InitSchema(db, zap.NewNop())
+		err = InitSchema(context.Background(), db, zap.NewNop())
 		if err != nil {
 			t.Fatalf("Failed to initialize schema on iteration %d: %v", i, err)
 		}
 
-		version, err := GetSchemaVersion(db)
+		version, err := GetSchemaVersion(context.Background(), db)
 		if err != nil {
 			t.Fatalf("Failed to get schema version: %v", err)
 		}
@@ -78,7 +79,7 @@ func TestBasicCRUDOperations(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database manager: %v", err)
 	}
@@ -101,7 +102,7 @@ func TestBasicCRUDOperations(t *testing.T) {
 		DateAdded:    nil,
 	}
 
-	err = dm.InsertTrack(track)
+	err = dm.InsertTrack(context.Background(), track)
 	if err != nil {
 		t.Fatalf("Failed to insert track: %v", err)
 	}
@@ -110,7 +111,7 @@ func TestBasicCRUDOperations(t *testing.T) {
 	}
 
 	// Retrieve track by persistent ID
-	retrieved, err := dm.GetTrackByPersistentID(track.PersistentID)
+	retrieved, err := dm.GetTrackByPersistentID(context.Background(), track.PersistentID)
 	if err != nil {
 		t.Fatalf("Failed to retrieve track: %v", err)
 	}
@@ -139,7 +140,7 @@ func TestBasicCRUDOperations(t *testing.T) {
 	}
 
 	// Test search
-	results, err := dm.SearchTracks("Test", nil)
+	results, err := dm.SearchTracks(context.Background(), "Test", nil)
 	if err != nil {
 		t.Fatalf("Failed to search tracks: %v", err)
 	}
@@ -148,7 +149,7 @@ func TestBasicCRUDOperations(t *testing.T) {
 	}
 
 	// Test FTS search
-	ftsResults, err := dm.SearchTracksWithFTS("Test", nil)
+	ftsResults, err := dm.SearchTracksWithFTS(context.Background(), "Test", nil)
 	if err != nil {
 		t.Fatalf("Failed to search tracks with FTS: %v", err)
 	}
@@ -157,7 +158,7 @@ func TestBasicCRUDOperations(t *testing.T) {
 	}
 
 	// Verify stats
-	stats, err := dm.GetStats()
+	stats, err := dm.GetStats(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to get stats: %v", err)
 	}
@@ -180,7 +181,7 @@ func TestSearchFilters(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database manager: %v", err)
 	}
@@ -195,7 +196,7 @@ func TestSearchFilters(t *testing.T) {
 	}
 
 	for i := range tracks {
-		if err := dm.InsertTrack(&tracks[i]); err != nil {
+		if err := dm.InsertTrack(context.Background(), &tracks[i]); err != nil {
 			t.Fatalf("Failed to insert track %d: %v", i, err)
 		}
 	}
@@ -217,7 +218,7 @@ func TestSearchFilters(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			results, err := dm.SearchTracks(tt.query, &tt.filters)
+			results, err := dm.SearchTracks(context.Background(), tt.query, &tt.filters)
 			if err != nil {
 				t.Fatalf("Search failed: %v", err)
 			}
@@ -233,7 +234,7 @@ func BenchmarkInsertTracks(b *testing.B) {
 	tmpDir := b.TempDir()
 	dbPath := filepath.Join(tmpDir, "bench.db")
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		b.Fatalf("Failed to create database manager: %v", err)
 	}
@@ -260,7 +261,7 @@ func BenchmarkInsertTracks(b *testing.B) {
 			PlayCount:    rand.Intn(100),
 		}
 
-		if err := dm.InsertTrack(track); err != nil {
+		if err := dm.InsertTrack(context.Background(), track); err != nil {
 			b.Fatalf("Failed to insert track: %v", err)
 		}
 	}
@@ -271,7 +272,7 @@ func BenchmarkSearchPerformance(b *testing.B) {
 	tmpDir := b.TempDir()
 	dbPath := filepath.Join(tmpDir, "bench.db")
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		b.Fatalf("Failed to create database manager: %v", err)
 	}
@@ -297,13 +298,13 @@ func BenchmarkSearchPerformance(b *testing.B) {
 			PlayCount:    rand.Intn(100),
 		}
 
-		if err := dm.InsertTrack(track); err != nil {
+		if err := dm.InsertTrack(context.Background(), track); err != nil {
 			b.Fatalf("Failed to insert track: %v", err)
 		}
 	}
 
 	// Run ANALYZE to update statistics
-	if _, err := dm.DB.Exec("ANALYZE"); err != nil {
+	if _, err := dm.DB.ExecContext(context.Background(), "ANALYZE"); err != nil {
 		b.Logf("Warning: failed to run ANALYZE: %v", err)
 	}
 
@@ -313,7 +314,7 @@ func BenchmarkSearchPerformance(b *testing.B) {
 	b.Run("RegularSearch", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			query := words[i%len(words)]
-			_, err := dm.SearchTracks(query, &SearchFilters{Limit: 15})
+			_, err := dm.SearchTracks(context.Background(), query, &SearchFilters{Limit: 15})
 			if err != nil {
 				b.Fatalf("Search failed: %v", err)
 			}
@@ -324,7 +325,7 @@ func BenchmarkSearchPerformance(b *testing.B) {
 	b.Run("FTSSearch", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			query := words[i%len(words)]
-			_, err := dm.SearchTracksWithFTS(query, &SearchFilters{Limit: 15})
+			_, err := dm.SearchTracksWithFTS(context.Background(), query, &SearchFilters{Limit: 15})
 			if err != nil {
 				b.Fatalf("FTS search failed: %v", err)
 			}
@@ -337,7 +338,7 @@ func TestFTSSearchPerformance(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "perf.db")
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database manager: %v", err)
 	}
@@ -366,13 +367,13 @@ func TestFTSSearchPerformance(t *testing.T) {
 			PlayCount:    rand.Intn(100),
 		}
 
-		if err := dm.InsertTrack(track); err != nil {
+		if err := dm.InsertTrack(context.Background(), track); err != nil {
 			t.Fatalf("Failed to insert track: %v", err)
 		}
 	}
 
 	// Run ANALYZE to update statistics
-	if _, err := dm.DB.Exec("ANALYZE"); err != nil {
+	if _, err := dm.DB.ExecContext(context.Background(), "ANALYZE"); err != nil {
 		t.Logf("Warning: failed to run ANALYZE: %v", err)
 	}
 
@@ -381,7 +382,7 @@ func TestFTSSearchPerformance(t *testing.T) {
 
 	for _, query := range queries {
 		start := time.Now()
-		results, err := dm.SearchTracksWithFTS(query, &SearchFilters{Limit: 15})
+		results, err := dm.SearchTracksWithFTS(context.Background(), query, &SearchFilters{Limit: 15})
 		duration := time.Since(start)
 
 		if err != nil {
@@ -412,7 +413,7 @@ func TestFTSSearchPerformance(t *testing.T) {
 
 	for i, filter := range filters {
 		start := time.Now()
-		results, err := dm.SearchTracksWithFTS("", &filter)
+		results, err := dm.SearchTracksWithFTS(context.Background(), "", &filter)
 		duration := time.Since(start)
 
 		if err != nil {
@@ -434,7 +435,7 @@ func TestVacuum(t *testing.T) {
 	tmpDir := t.TempDir()
 	dbPath := filepath.Join(tmpDir, "test.db")
 
-	dm, err := NewDatabaseManager(dbPath, zap.NewNop())
+	dm, err := NewDatabaseManager(context.Background(), dbPath, zap.NewNop())
 	if err != nil {
 		t.Fatalf("Failed to create database manager: %v", err)
 	}
@@ -449,29 +450,29 @@ func TestVacuum(t *testing.T) {
 			Album:        "Test Album",
 			Genre:        "Test Genre",
 		}
-		if err := dm.InsertTrack(track); err != nil {
+		if err := dm.InsertTrack(context.Background(), track); err != nil {
 			t.Fatalf("Failed to insert track: %v", err)
 		}
 	}
 
 	// Get initial count
 	var initialCount int64
-	if err := dm.DB.QueryRow("SELECT COUNT(*) FROM tracks").Scan(&initialCount); err != nil {
+	if err := dm.DB.QueryRowContext(context.Background(), "SELECT COUNT(*) FROM tracks").Scan(&initialCount); err != nil {
 		t.Fatalf("Failed to get initial count: %v", err)
 	}
 
 	// Delete some tracks using persistent IDs to avoid FTS issues
-	if _, err := dm.DB.Exec("DELETE FROM tracks WHERE persistent_id LIKE 'VACUUM%' AND CAST(SUBSTR(persistent_id, 7) AS INTEGER) % 2 = 0"); err != nil {
+	if _, err := dm.DB.ExecContext(context.Background(), "DELETE FROM tracks WHERE persistent_id LIKE 'VACUUM%' AND CAST(SUBSTR(persistent_id, 7) AS INTEGER) % 2 = 0"); err != nil {
 		t.Fatalf("Failed to delete tracks: %v", err)
 	}
 
 	// Run vacuum
-	if err := dm.Vacuum(); err != nil {
+	if err := dm.Vacuum(context.Background()); err != nil {
 		t.Fatalf("Failed to vacuum database: %v", err)
 	}
 
 	// Verify database still works
-	stats, err := dm.GetStats()
+	stats, err := dm.GetStats(context.Background())
 	if err != nil {
 		t.Fatalf("Failed to get stats after vacuum: %v", err)
 	}

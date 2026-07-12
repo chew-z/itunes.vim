@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"crypto/md5"
 	"fmt"
 	"strings"
@@ -298,7 +299,7 @@ func NewSearchManager(dm *DatabaseManager) *SearchManager {
 }
 
 // SearchWithCache performs a cached search
-func (sm *SearchManager) SearchWithCache(query string, filters *SearchFilters) ([]Track, error) {
+func (sm *SearchManager) SearchWithCache(ctx context.Context, query string, filters *SearchFilters) ([]Track, error) {
 	start := time.Now()
 
 	// Generate cache key
@@ -317,7 +318,7 @@ func (sm *SearchManager) SearchWithCache(query string, filters *SearchFilters) (
 	}
 
 	// Perform search
-	tracks, err := sm.SearchTracksOptimized(query, filters)
+	tracks, err := sm.SearchTracksOptimized(ctx, query, filters)
 	if err != nil {
 		return nil, err
 	}
@@ -337,7 +338,7 @@ func (sm *SearchManager) SearchWithCache(query string, filters *SearchFilters) (
 }
 
 // SearchTracksOptimized performs an optimized search with relevance scoring
-func (sm *SearchManager) SearchTracksOptimized(query string, filters *SearchFilters) ([]Track, error) {
+func (sm *SearchManager) SearchTracksOptimized(ctx context.Context, query string, filters *SearchFilters) ([]Track, error) {
 	start := time.Now()
 	builder := NewSearchQueryBuilder(query, filters)
 
@@ -348,7 +349,7 @@ func (sm *SearchManager) SearchTracksOptimized(query string, filters *SearchFilt
 	}
 
 	method := "fts"
-	tracks, err := sm.executeSearchQuery(sqlQuery, args)
+	tracks, err := sm.executeSearchQuery(ctx, sqlQuery, args)
 	if err != nil {
 		// Fallback to LIKE queries if FTS fails
 		method = "like"
@@ -356,7 +357,7 @@ func (sm *SearchManager) SearchTracksOptimized(query string, filters *SearchFilt
 		if err != nil {
 			return nil, err
 		}
-		tracks, err = sm.executeSearchQuery(sqlQuery, args)
+		tracks, err = sm.executeSearchQuery(ctx, sqlQuery, args)
 	}
 
 	// Record metrics
@@ -372,8 +373,8 @@ func (sm *SearchManager) SearchTracksOptimized(query string, filters *SearchFilt
 }
 
 // executeSearchQuery executes a search query and returns tracks
-func (sm *SearchManager) executeSearchQuery(query string, args []interface{}) ([]Track, error) {
-	rows, err := sm.DB.Query(query, args...)
+func (sm *SearchManager) executeSearchQuery(ctx context.Context, query string, args []interface{}) ([]Track, error) {
+	rows, err := sm.DB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to execute search query: %w", err)
 	}
@@ -404,7 +405,7 @@ func (sm *SearchManager) executeSearchQuery(query string, args []interface{}) ([
 	}
 
 	if len(tracks) > 0 {
-		err := sm.fetchPlaylistsForTracks(tracks, trackIDs)
+		err := sm.fetchPlaylistsForTracks(ctx, tracks, trackIDs)
 		if err != nil {
 			// Log or handle error, but don't fail the whole search
 		}
@@ -414,7 +415,7 @@ func (sm *SearchManager) executeSearchQuery(query string, args []interface{}) ([
 }
 
 // fetchPlaylistsForTracks fetches all playlists for a slice of tracks.
-func (sm *SearchManager) fetchPlaylistsForTracks(tracks []Track, trackIDs []int64) error {
+func (sm *SearchManager) fetchPlaylistsForTracks(ctx context.Context, tracks []Track, trackIDs []int64) error {
 	placeholders := strings.Repeat("?,", len(trackIDs)-1) + "?"
 	query := fmt.Sprintf(`
 		SELECT pt.track_id, p.name
@@ -429,7 +430,7 @@ func (sm *SearchManager) fetchPlaylistsForTracks(tracks []Track, trackIDs []int6
 		args[i] = id
 	}
 
-	rows, err := sm.DB.Query(query, args...)
+	rows, err := sm.DB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return fmt.Errorf("failed to fetch playlists for tracks: %w", err)
 	}

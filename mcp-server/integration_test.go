@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 
 	// Initialize database using the iTunes package
 	var err error
-	client, err = itunes.NewClient(zap.NewNop())
+	client, err = itunes.NewClient(context.Background(), zap.NewNop())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize test database: %v\n", err)
 		os.Exit(1)
@@ -53,7 +53,7 @@ func TestMain(m *testing.M) {
 
 func populateTestData() error {
 	// Use the same database path that was set in TestMain
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, zap.NewNop())
+	dm, err := database.NewDatabaseManager(context.Background(), database.PrimaryDBPath, zap.NewNop())
 	if err != nil {
 		return err
 	}
@@ -67,7 +67,7 @@ func populateTestData() error {
 	}
 
 	for _, p := range playlists {
-		if err := dm.UpsertPlaylist(&p); err != nil {
+		if err := dm.UpsertPlaylist(context.Background(), &p); err != nil {
 			return err
 		}
 	}
@@ -131,12 +131,12 @@ func populateTestData() error {
 		},
 	}
 
-	if err := dm.BatchInsertTracks(tracks); err != nil {
+	if err := dm.BatchInsertTracks(context.Background(), tracks); err != nil {
 		return err
 	}
 
 	// Link tracks to playlists - need to get internal IDs first
-	allPlaylists, err := dm.ListPlaylists()
+	allPlaylists, err := dm.ListPlaylists(context.Background())
 	if err != nil {
 		return err
 	}
@@ -149,7 +149,7 @@ func populateTestData() error {
 	// Get track internal IDs
 	trackIDMap := make(map[string]int64)
 	for _, track := range tracks {
-		dbTrack, err := dm.GetTrackByPersistentID(track.PersistentID)
+		dbTrack, err := dm.GetTrackByPersistentID(context.Background(), track.PersistentID)
 		if err != nil {
 			return err
 		}
@@ -172,7 +172,7 @@ func populateTestData() error {
 		for _, tpid := range pt.TrackPersistentIDs {
 			trackIDs = append(trackIDs, trackIDMap[tpid])
 		}
-		if err := dm.BatchInsertPlaylistTracks(playlistID, trackIDs); err != nil {
+		if err := dm.BatchInsertPlaylistTracks(context.Background(), playlistID, trackIDs); err != nil {
 			return err
 		}
 	}

@@ -759,7 +759,7 @@ func retryWithBackoff(fn func() error, maxRetries int) error {
 }
 
 // NewClient initializes the SQLite database connection.
-func NewClient(logger *zap.Logger) (*Client, error) {
+func NewClient(ctx context.Context, logger *zap.Logger) (*Client, error) {
 	searchLimit := 15
 	// Get search limit from environment if set
 	if limitStr := os.Getenv("ITUNES_SEARCH_LIMIT"); limitStr != "" {
@@ -769,13 +769,13 @@ func NewClient(logger *zap.Logger) (*Client, error) {
 	}
 
 	// Initialize database manager
-	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
+	dm, err := database.NewDatabaseManager(ctx, database.PrimaryDBPath, logger)
 	if err != nil {
 		return nil, &ITunesError{Op: "NewClient: new database manager", Kind: ErrDatabase, Err: err}
 	}
 
 	// Run migrations to ensure schema is up to date
-	if err := dm.RunMigrations(); err != nil {
+	if err := dm.RunMigrations(ctx); err != nil {
 		_ = dm.Close() //nolint:errcheck // already returning migration error
 		return nil, &ITunesError{Op: "NewClient: run migrations", Kind: ErrDatabase, Err: err}
 	}
@@ -789,7 +789,7 @@ func (c *Client) Close() error {
 }
 
 // SearchTracksFromDatabase searches tracks using the SQLite database with FTS5
-func (c *Client) SearchTracksFromDatabase(query string, filters *database.SearchFilters) ([]Track, error) {
+func (c *Client) SearchTracksFromDatabase(ctx context.Context, query string, filters *database.SearchFilters) ([]Track, error) {
 	// Apply default search limit if not specified in filters
 	if filters == nil {
 		filters = &database.SearchFilters{Limit: c.searchLimit}
@@ -798,7 +798,7 @@ func (c *Client) SearchTracksFromDatabase(query string, filters *database.Search
 	}
 
 	// Use search manager for cached search
-	dbTracks, err := c.search.SearchWithCache(query, filters)
+	dbTracks, err := c.search.SearchWithCache(ctx, query, filters)
 	if err != nil {
 		return nil, &ITunesError{Op: "SearchTracksFromDatabase: search with cache", Kind: ErrDatabase, Err: err}
 	}
@@ -827,8 +827,8 @@ func (c *Client) SearchTracksFromDatabase(query string, filters *database.Search
 }
 
 // GetTrackByPersistentID retrieves a single track by its persistent ID
-func (c *Client) GetTrackByPersistentID(persistentID string) (*Track, error) {
-	dbTrack, err := c.db.GetTrackByPersistentID(persistentID)
+func (c *Client) GetTrackByPersistentID(ctx context.Context, persistentID string) (*Track, error) {
+	dbTrack, err := c.db.GetTrackByPersistentID(ctx, persistentID)
 	if errors.Is(err, database.ErrTrackNotFound) {
 		return nil, &ITunesError{Op: "GetTrackByPersistentID", Kind: ErrNoTracksFound, Err: fmt.Errorf("track with persistent ID '%s' not found", persistentID)}
 	}
@@ -860,8 +860,8 @@ func (c *Client) GetTrackByPersistentID(persistentID string) (*Track, error) {
 }
 
 // GetPlaylistTracks retrieves all tracks in a playlist
-func (c *Client) GetPlaylistTracks(playlistIdentifier string, usePlaylistID bool) ([]Track, error) {
-	dbTracks, err := c.db.GetPlaylistTracks(playlistIdentifier, usePlaylistID)
+func (c *Client) GetPlaylistTracks(ctx context.Context, playlistIdentifier string, usePlaylistID bool) ([]Track, error) {
+	dbTracks, err := c.db.GetPlaylistTracks(ctx, playlistIdentifier, usePlaylistID)
 	if err != nil {
 		return nil, &ITunesError{Op: "GetPlaylistTracks: get from db", Kind: ErrDatabase, Err: err}
 	}
@@ -889,8 +889,8 @@ func (c *Client) GetPlaylistTracks(playlistIdentifier string, usePlaylistID bool
 }
 
 // GetDatabaseStats returns database statistics
-func (c *Client) GetDatabaseStats() (*database.DatabaseStats, error) {
-	stats, err := c.db.GetStats()
+func (c *Client) GetDatabaseStats(ctx context.Context) (*database.DatabaseStats, error) {
+	stats, err := c.db.GetStats(ctx)
 	if err != nil {
 		return nil, &ITunesError{Op: "GetDatabaseStats: get from db", Kind: ErrDatabase, Err: err}
 	}
@@ -898,8 +898,8 @@ func (c *Client) GetDatabaseStats() (*database.DatabaseStats, error) {
 }
 
 // ListPlaylists returns all user playlists from the database
-func (c *Client) ListPlaylists() ([]database.Playlist, error) {
-	playlists, err := c.db.ListPlaylists()
+func (c *Client) ListPlaylists(ctx context.Context) ([]database.Playlist, error) {
+	playlists, err := c.db.ListPlaylists(ctx)
 	if err != nil {
 		return nil, &ITunesError{Op: "ListPlaylists: get from db", Kind: ErrDatabase, Err: err}
 	}
@@ -907,17 +907,17 @@ func (c *Client) ListPlaylists() ([]database.Playlist, error) {
 }
 
 // SearchTracks is the main search function using database
-func (c *Client) SearchTracks(query string) ([]Track, error) {
-	return c.SearchTracksFromDatabase(query, nil)
+func (c *Client) SearchTracks(ctx context.Context, query string) ([]Track, error) {
+	return c.SearchTracksFromDatabase(ctx, query, nil)
 }
 
 // SearchStations searches for radio stations in the database
-func (c *Client) SearchStations(query string) (*StationSearchResult, error) {
+func (c *Client) SearchStations(ctx context.Context, query string) (*StationSearchResult, error) {
 	filters := &database.RadioStationFilters{
 		Limit: 15, // Default limit, can be made configurable
 	}
 
-	stations, err := c.db.SearchRadioStations(query, filters)
+	stations, err := c.db.SearchRadioStations(ctx, query, filters)
 	if err != nil {
 		return &StationSearchResult{
 			Status:  "error",
@@ -960,28 +960,30 @@ func (c *Client) SearchStations(query string) (*StationSearchResult, error) {
 // SearchLimit returns the configured default search limit.
 func (c *Client) SearchLimit() int { return c.searchLimit }
 
-func (c *Client) AddRadioStation(station *database.RadioStation) error {
-	return c.db.AddRadioStation(station)
+func (c *Client) AddRadioStation(ctx context.Context, station *database.RadioStation) error {
+	return c.db.AddRadioStation(ctx, station)
 }
 
-func (c *Client) GetRadioStationByID(id int64) (*database.RadioStation, error) {
-	return c.db.GetRadioStationByID(id)
+func (c *Client) GetRadioStationByID(ctx context.Context, id int64) (*database.RadioStation, error) {
+	return c.db.GetRadioStationByID(ctx, id)
 }
 
-func (c *Client) UpdateRadioStation(id int64, station *database.RadioStation) error {
-	return c.db.UpdateRadioStation(id, station)
+func (c *Client) UpdateRadioStation(ctx context.Context, id int64, station *database.RadioStation) error {
+	return c.db.UpdateRadioStation(ctx, id, station)
 }
 
-func (c *Client) DeleteRadioStation(id int64) error { return c.db.DeleteRadioStation(id) }
-
-func (c *Client) ImportRadioStations(stations []database.RadioStation) error {
-	return c.db.ImportRadioStations(stations)
+func (c *Client) DeleteRadioStation(ctx context.Context, id int64) error {
+	return c.db.DeleteRadioStation(ctx, id)
 }
 
-func (c *Client) SearchRadioStations(query string, filters *database.RadioStationFilters) ([]database.RadioStation, error) {
-	return c.db.SearchRadioStations(query, filters)
+func (c *Client) ImportRadioStations(ctx context.Context, stations []database.RadioStation) error {
+	return c.db.ImportRadioStations(ctx, stations)
 }
 
-func (c *Client) MigrateFromJSON(cacheDir string, callback database.ProgressCallback) error {
-	return c.db.MigrateFromJSON(cacheDir, callback)
+func (c *Client) SearchRadioStations(ctx context.Context, query string, filters *database.RadioStationFilters) ([]database.RadioStation, error) {
+	return c.db.SearchRadioStations(ctx, query, filters)
+}
+
+func (c *Client) MigrateFromJSON(ctx context.Context, cacheDir string, callback database.ProgressCallback) error {
+	return c.db.MigrateFromJSON(ctx, cacheDir, callback)
 }

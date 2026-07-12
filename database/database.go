@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -115,7 +116,7 @@ type DatabaseStats struct {
 }
 
 // NewDatabaseManager creates a new database manager instance
-func NewDatabaseManager(dbPath string, logger *zap.Logger) (*DatabaseManager, error) {
+func NewDatabaseManager(ctx context.Context, dbPath string, logger *zap.Logger) (*DatabaseManager, error) {
 	// Expand home directory
 	if strings.HasPrefix(dbPath, "~/") {
 		home, err := os.UserHomeDir()
@@ -138,7 +139,7 @@ func NewDatabaseManager(dbPath string, logger *zap.Logger) (*DatabaseManager, er
 	}
 
 	// Test connection
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(ctx); err != nil {
 		_ = db.Close() //nolint:errcheck // already returning constructor error
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
@@ -146,7 +147,7 @@ func NewDatabaseManager(dbPath string, logger *zap.Logger) (*DatabaseManager, er
 	dm := &DatabaseManager{DB: db, Logger: logger}
 
 	// Initialize schema
-	if err := InitSchema(db, logger); err != nil {
+	if err := InitSchema(ctx, db, logger); err != nil {
 		_ = db.Close() //nolint:errcheck // already returning constructor error
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
@@ -160,13 +161,13 @@ func (dm *DatabaseManager) Close() error {
 }
 
 // GetOrCreateArtist gets or creates an artist and returns its ID
-func (dm *DatabaseManager) GetOrCreateArtist(name string) (int64, error) {
+func (dm *DatabaseManager) GetOrCreateArtist(ctx context.Context, name string) (int64, error) {
 	if name == "" {
 		name = "Unknown Artist"
 	}
 
 	var id int64
-	err := dm.DB.QueryRow("SELECT id FROM artists WHERE name = ?", name).Scan(&id)
+	err := dm.DB.QueryRowContext(ctx, "SELECT id FROM artists WHERE name = ?", name).Scan(&id)
 	if err == nil {
 		return id, nil
 	}
@@ -176,7 +177,7 @@ func (dm *DatabaseManager) GetOrCreateArtist(name string) (int64, error) {
 	}
 
 	// Artist doesn't exist, create it
-	result, err := dm.DB.Exec("INSERT INTO artists (name) VALUES (?)", name)
+	result, err := dm.DB.ExecContext(ctx, "INSERT INTO artists (name) VALUES (?)", name)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert artist: %w", err)
 	}
@@ -185,13 +186,13 @@ func (dm *DatabaseManager) GetOrCreateArtist(name string) (int64, error) {
 }
 
 // GetOrCreateGenre gets or creates a genre and returns its ID
-func (dm *DatabaseManager) GetOrCreateGenre(name string) (int64, error) {
+func (dm *DatabaseManager) GetOrCreateGenre(ctx context.Context, name string) (int64, error) {
 	if name == "" {
 		name = "Unknown"
 	}
 
 	var id int64
-	err := dm.DB.QueryRow("SELECT id FROM genres WHERE name = ?", name).Scan(&id)
+	err := dm.DB.QueryRowContext(ctx, "SELECT id FROM genres WHERE name = ?", name).Scan(&id)
 	if err == nil {
 		return id, nil
 	}
@@ -201,7 +202,7 @@ func (dm *DatabaseManager) GetOrCreateGenre(name string) (int64, error) {
 	}
 
 	// Genre doesn't exist, create it
-	result, err := dm.DB.Exec("INSERT INTO genres (name) VALUES (?)", name)
+	result, err := dm.DB.ExecContext(ctx, "INSERT INTO genres (name) VALUES (?)", name)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert genre: %w", err)
 	}
@@ -210,13 +211,13 @@ func (dm *DatabaseManager) GetOrCreateGenre(name string) (int64, error) {
 }
 
 // GetOrCreateAlbum gets or creates an album and returns its ID
-func (dm *DatabaseManager) GetOrCreateAlbum(name string, artistID int64, genreID int64) (int64, error) {
+func (dm *DatabaseManager) GetOrCreateAlbum(ctx context.Context, name string, artistID int64, genreID int64) (int64, error) {
 	if name == "" {
 		name = "Unknown Album"
 	}
 
 	var id int64
-	err := dm.DB.QueryRow("SELECT id FROM albums WHERE name = ? AND artist_id = ?", name, artistID).Scan(&id)
+	err := dm.DB.QueryRowContext(ctx, "SELECT id FROM albums WHERE name = ? AND artist_id = ?", name, artistID).Scan(&id)
 	if err == nil {
 		return id, nil
 	}
@@ -226,7 +227,7 @@ func (dm *DatabaseManager) GetOrCreateAlbum(name string, artistID int64, genreID
 	}
 
 	// Album doesn't exist, create it
-	result, err := dm.DB.Exec("INSERT INTO albums (name, artist_id, genre_id) VALUES (?, ?, ?)", name, artistID, genreID)
+	result, err := dm.DB.ExecContext(ctx, "INSERT INTO albums (name, artist_id, genre_id) VALUES (?, ?, ?)", name, artistID, genreID)
 	if err != nil {
 		return 0, fmt.Errorf("failed to insert album: %w", err)
 	}
@@ -235,19 +236,19 @@ func (dm *DatabaseManager) GetOrCreateAlbum(name string, artistID int64, genreID
 }
 
 // InsertTrack inserts a new track
-func (dm *DatabaseManager) InsertTrack(track *Track) error {
+func (dm *DatabaseManager) InsertTrack(ctx context.Context, track *Track) error {
 	// Get or create related entities
-	artistID, err := dm.GetOrCreateArtist(track.Artist)
+	artistID, err := dm.GetOrCreateArtist(ctx, track.Artist)
 	if err != nil {
 		return fmt.Errorf("failed to get/create artist: %w", err)
 	}
 
-	genreID, err := dm.GetOrCreateGenre(track.Genre)
+	genreID, err := dm.GetOrCreateGenre(ctx, track.Genre)
 	if err != nil {
 		return fmt.Errorf("failed to get/create genre: %w", err)
 	}
 
-	albumID, err := dm.GetOrCreateAlbum(track.Album, artistID, genreID)
+	albumID, err := dm.GetOrCreateAlbum(ctx, track.Album, artistID, genreID)
 	if err != nil {
 		return fmt.Errorf("failed to get/create album: %w", err)
 	}
@@ -262,7 +263,7 @@ func (dm *DatabaseManager) InsertTrack(track *Track) error {
 		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`
 
-	result, err := dm.DB.Exec(query,
+	result, err := dm.DB.ExecContext(ctx, query,
 		track.PersistentID, track.Name, artistID, albumID, genreID,
 		track.Collection, track.Rating, track.Starred, track.Ranking, track.Duration,
 		track.PlayCount, track.LastPlayed, track.DateAdded, track.IsStreaming,
@@ -281,7 +282,7 @@ func (dm *DatabaseManager) InsertTrack(track *Track) error {
 }
 
 // GetTrackByPersistentID retrieves a track by its Apple Music persistent ID
-func (dm *DatabaseManager) GetTrackByPersistentID(persistentID string) (*Track, error) {
+func (dm *DatabaseManager) GetTrackByPersistentID(ctx context.Context, persistentID string) (*Track, error) {
 	query := `
 		SELECT
 			t.id, t.persistent_id, t.name, al.name, t.collection,
@@ -296,7 +297,7 @@ func (dm *DatabaseManager) GetTrackByPersistentID(persistentID string) (*Track, 
 	`
 
 	track := &Track{}
-	err := dm.DB.QueryRow(query, persistentID).Scan(
+	err := dm.DB.QueryRowContext(ctx, query, persistentID).Scan(
 		&track.ID, &track.PersistentID, &track.Name, &track.Album, &track.Collection,
 		&track.Artist, &track.Genre, &track.Rating, &track.Starred, &track.Ranking,
 		&track.Duration, &track.PlayCount, &track.LastPlayed, &track.DateAdded,
@@ -318,7 +319,7 @@ func (dm *DatabaseManager) GetTrackByPersistentID(persistentID string) (*Track, 
 		ORDER BY p.name
 	`
 
-	rows, err := dm.DB.Query(playlistQuery, track.ID)
+	rows, err := dm.DB.QueryContext(ctx, playlistQuery, track.ID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query playlists: %w", err)
 	}
@@ -336,7 +337,7 @@ func (dm *DatabaseManager) GetTrackByPersistentID(persistentID string) (*Track, 
 }
 
 // SearchTracks searches for tracks with filters
-func (dm *DatabaseManager) SearchTracks(query string, filters *SearchFilters) ([]Track, error) {
+func (dm *DatabaseManager) SearchTracks(ctx context.Context, query string, filters *SearchFilters) ([]Track, error) {
 	if filters == nil {
 		filters = &SearchFilters{Limit: 15}
 	}
@@ -408,7 +409,7 @@ func (dm *DatabaseManager) SearchTracks(query string, filters *SearchFilters) ([
 
 	args = append(args, filters.Limit)
 
-	rows, err := dm.DB.Query(sqlQuery, args...)
+	rows, err := dm.DB.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query tracks: %w", err)
 	}
@@ -433,7 +434,7 @@ func (dm *DatabaseManager) SearchTracks(query string, filters *SearchFilters) ([
 }
 
 // SearchTracksWithFTS searches tracks using full-text search
-func (dm *DatabaseManager) SearchTracksWithFTS(query string, filters *SearchFilters) ([]Track, error) {
+func (dm *DatabaseManager) SearchTracksWithFTS(ctx context.Context, query string, filters *SearchFilters) ([]Track, error) {
 	if filters == nil {
 		filters = &SearchFilters{Limit: 15}
 	}
@@ -505,7 +506,7 @@ func (dm *DatabaseManager) SearchTracksWithFTS(query string, filters *SearchFilt
 
 	args = append(args, filters.Limit)
 
-	rows, err := dm.DB.Query(sqlQuery, args...)
+	rows, err := dm.DB.QueryContext(ctx, sqlQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query tracks with FTS: %w", err)
 	}
@@ -530,7 +531,7 @@ func (dm *DatabaseManager) SearchTracksWithFTS(query string, filters *SearchFilt
 }
 
 // GetStats returns database statistics
-func (dm *DatabaseManager) GetStats() (*DatabaseStats, error) {
+func (dm *DatabaseManager) GetStats(ctx context.Context) (*DatabaseStats, error) {
 	stats := &DatabaseStats{}
 
 	// Get counts
@@ -543,17 +544,17 @@ func (dm *DatabaseManager) GetStats() (*DatabaseStats, error) {
 	}
 
 	for query, target := range queries {
-		if err := dm.DB.QueryRow(query).Scan(target); err != nil {
+		if err := dm.DB.QueryRowContext(ctx, query).Scan(target); err != nil {
 			return nil, fmt.Errorf("failed to get count: %w", err)
 		}
 	}
 
 	// Get database size
 	var pageCount, pageSize int64
-	if err := dm.DB.QueryRow("PRAGMA page_count").Scan(&pageCount); err != nil {
+	if err := dm.DB.QueryRowContext(ctx, "PRAGMA page_count").Scan(&pageCount); err != nil {
 		dm.Logger.Warn("Failed to get page count", zap.Error(err))
 	}
-	if err := dm.DB.QueryRow("PRAGMA page_size").Scan(&pageSize); err != nil {
+	if err := dm.DB.QueryRowContext(ctx, "PRAGMA page_size").Scan(&pageSize); err != nil {
 		dm.Logger.Warn("Failed to get page size", zap.Error(err))
 	}
 	stats.DatabaseSize = pageCount * pageSize
@@ -562,19 +563,19 @@ func (dm *DatabaseManager) GetStats() (*DatabaseStats, error) {
 }
 
 // Vacuum optimizes the database by reclaiming unused space and defragmenting tables
-func (dm *DatabaseManager) Vacuum() error {
-	_, err := dm.DB.Exec("VACUUM")
+func (dm *DatabaseManager) Vacuum(ctx context.Context) error {
+	_, err := dm.DB.ExecContext(ctx, "VACUUM")
 	return err
 }
 
 // RunMigrations ensures all database migrations are applied
-func (dm *DatabaseManager) RunMigrations() error {
-	return InitSchema(dm.DB, dm.Logger)
+func (dm *DatabaseManager) RunMigrations(ctx context.Context) error {
+	return InitSchema(ctx, dm.DB, dm.Logger)
 }
 
 // BatchInsertTracks inserts multiple tracks in a single transaction
-func (dm *DatabaseManager) BatchInsertTracks(tracks []Track) error {
-	tx, err := dm.DB.Begin()
+func (dm *DatabaseManager) BatchInsertTracks(ctx context.Context, tracks []Track) error {
+	tx, err := dm.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -585,7 +586,7 @@ func (dm *DatabaseManager) BatchInsertTracks(tracks []Track) error {
 	}()
 
 	// Prepare statements
-	trackStmt, err := tx.Prepare(`
+	trackStmt, err := tx.PrepareContext(ctx, `
 		INSERT OR REPLACE INTO tracks (
 			persistent_id, name, artist_id, album_id, genre_id,
 			collection, rating, starred, ranking, duration,
@@ -607,7 +608,7 @@ func (dm *DatabaseManager) BatchInsertTracks(tracks []Track) error {
 	for _, track := range tracks {
 		// Ensure artist, album, and genre exist
 		if track.Artist != "" {
-			if err := dm.upsertArtistTx(tx, track.Artist); err != nil {
+			if err := dm.upsertArtistTx(ctx, tx, track.Artist); err != nil {
 				return fmt.Errorf("failed to upsert artist: %w", err)
 			}
 		}
@@ -616,18 +617,18 @@ func (dm *DatabaseManager) BatchInsertTracks(tracks []Track) error {
 		if genre == "" {
 			genre = "Unknown"
 		}
-		if err := dm.upsertGenreTx(tx, genre); err != nil {
+		if err := dm.upsertGenreTx(ctx, tx, genre); err != nil {
 			return fmt.Errorf("failed to upsert genre: %w", err)
 		}
 
 		if track.Album != "" && track.Artist != "" {
-			if err := dm.upsertAlbumTx(tx, track.Album, track.Artist, genre); err != nil {
+			if err := dm.upsertAlbumTx(ctx, tx, track.Album, track.Artist, genre); err != nil {
 				return fmt.Errorf("failed to upsert album: %w", err)
 			}
 		}
 
 		// Insert track
-		_, err := trackStmt.Exec(
+		_, err := trackStmt.ExecContext(ctx,
 			track.PersistentID, track.Name, track.Artist,
 			track.Album, track.Artist, genre,
 			track.Collection, track.Rating, track.Starred,
@@ -644,28 +645,28 @@ func (dm *DatabaseManager) BatchInsertTracks(tracks []Track) error {
 }
 
 // UpsertArtist inserts or updates an artist
-func (dm *DatabaseManager) UpsertArtist(name string) error {
-	_, err := dm.DB.Exec(`INSERT OR IGNORE INTO artists (name) VALUES (?)`, name)
+func (dm *DatabaseManager) UpsertArtist(ctx context.Context, name string) error {
+	_, err := dm.DB.ExecContext(ctx, `INSERT OR IGNORE INTO artists (name) VALUES (?)`, name)
 	return err
 }
 
 // upsertArtistTx inserts or updates an artist within a transaction
-func (dm *DatabaseManager) upsertArtistTx(tx *sql.Tx, name string) error {
-	_, err := tx.Exec(`INSERT OR IGNORE INTO artists (name) VALUES (?)`, name)
+func (dm *DatabaseManager) upsertArtistTx(ctx context.Context, tx *sql.Tx, name string) error {
+	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO artists (name) VALUES (?)`, name)
 	return err
 }
 
 // UpsertAlbum inserts or updates an album
-func (dm *DatabaseManager) UpsertAlbum(name, artistName, genreName string) error {
+func (dm *DatabaseManager) UpsertAlbum(ctx context.Context, name, artistName, genreName string) error {
 	// Ensure artist and genre exist
-	if err := dm.UpsertArtist(artistName); err != nil {
+	if err := dm.UpsertArtist(ctx, artistName); err != nil {
 		return err
 	}
-	if err := dm.UpsertGenre(genreName); err != nil {
+	if err := dm.UpsertGenre(ctx, genreName); err != nil {
 		return err
 	}
 
-	_, err := dm.DB.Exec(`
+	_, err := dm.DB.ExecContext(ctx, `
 		INSERT OR IGNORE INTO albums (name, artist_id, genre_id)
 		VALUES (?,
 			(SELECT id FROM artists WHERE name = ?),
@@ -675,8 +676,8 @@ func (dm *DatabaseManager) UpsertAlbum(name, artistName, genreName string) error
 }
 
 // upsertAlbumTx inserts or updates an album within a transaction
-func (dm *DatabaseManager) upsertAlbumTx(tx *sql.Tx, name, artistName, genreName string) error {
-	_, err := tx.Exec(`
+func (dm *DatabaseManager) upsertAlbumTx(ctx context.Context, tx *sql.Tx, name, artistName, genreName string) error {
+	_, err := tx.ExecContext(ctx, `
 		INSERT OR IGNORE INTO albums (name, artist_id, genre_id)
 		VALUES (?,
 			(SELECT id FROM artists WHERE name = ?),
@@ -686,20 +687,20 @@ func (dm *DatabaseManager) upsertAlbumTx(tx *sql.Tx, name, artistName, genreName
 }
 
 // UpsertGenre inserts or updates a genre
-func (dm *DatabaseManager) UpsertGenre(name string) error {
-	_, err := dm.DB.Exec(`INSERT OR IGNORE INTO genres (name) VALUES (?)`, name)
+func (dm *DatabaseManager) UpsertGenre(ctx context.Context, name string) error {
+	_, err := dm.DB.ExecContext(ctx, `INSERT OR IGNORE INTO genres (name) VALUES (?)`, name)
 	return err
 }
 
 // upsertGenreTx inserts or updates a genre within a transaction
-func (dm *DatabaseManager) upsertGenreTx(tx *sql.Tx, name string) error {
-	_, err := tx.Exec(`INSERT OR IGNORE INTO genres (name) VALUES (?)`, name)
+func (dm *DatabaseManager) upsertGenreTx(ctx context.Context, tx *sql.Tx, name string) error {
+	_, err := tx.ExecContext(ctx, `INSERT OR IGNORE INTO genres (name) VALUES (?)`, name)
 	return err
 }
 
 // SyncPlaylist updates playlist-track relationships
-func (dm *DatabaseManager) SyncPlaylist(playlistID string, trackPersistentIDs []string) error {
-	tx, err := dm.DB.Begin()
+func (dm *DatabaseManager) SyncPlaylist(ctx context.Context, playlistID string, trackPersistentIDs []string) error {
+	tx, err := dm.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -711,19 +712,19 @@ func (dm *DatabaseManager) SyncPlaylist(playlistID string, trackPersistentIDs []
 
 	// Get playlist internal ID
 	var internalPlaylistID int64
-	err = tx.QueryRow(`SELECT id FROM playlists WHERE persistent_id = ?`, playlistID).Scan(&internalPlaylistID)
+	err = tx.QueryRowContext(ctx, `SELECT id FROM playlists WHERE persistent_id = ?`, playlistID).Scan(&internalPlaylistID)
 	if err != nil {
 		return fmt.Errorf("playlist not found: %w", err)
 	}
 
 	// Clear existing associations
-	_, err = tx.Exec(`DELETE FROM playlist_tracks WHERE playlist_id = ?`, internalPlaylistID)
+	_, err = tx.ExecContext(ctx, `DELETE FROM playlist_tracks WHERE playlist_id = ?`, internalPlaylistID)
 	if err != nil {
 		return fmt.Errorf("failed to clear playlist tracks: %w", err)
 	}
 
 	// Insert new associations
-	stmt, err := tx.Prepare(`
+	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO playlist_tracks (playlist_id, track_id, position)
 		SELECT ?, id, ? FROM tracks WHERE persistent_id = ?
 	`)
@@ -733,7 +734,7 @@ func (dm *DatabaseManager) SyncPlaylist(playlistID string, trackPersistentIDs []
 	defer stmt.Close()
 
 	for i, trackID := range trackPersistentIDs {
-		_, err := stmt.Exec(internalPlaylistID, i, trackID)
+		_, err := stmt.ExecContext(ctx, internalPlaylistID, i, trackID)
 		if err != nil {
 			return fmt.Errorf("failed to add track to playlist: %w", err)
 		}
@@ -743,9 +744,9 @@ func (dm *DatabaseManager) SyncPlaylist(playlistID string, trackPersistentIDs []
 }
 
 // GetPlaylistByPersistentID retrieves a playlist by its persistent ID
-func (dm *DatabaseManager) GetPlaylistByPersistentID(persistentID string) (*Playlist, error) {
+func (dm *DatabaseManager) GetPlaylistByPersistentID(ctx context.Context, persistentID string) (*Playlist, error) {
 	playlist := &Playlist{}
-	err := dm.DB.QueryRow(`
+	err := dm.DB.QueryRowContext(ctx, `
 		SELECT p.id, p.persistent_id, p.name, COALESCE(g.name, ''), p.special_kind
 		FROM playlists p
 		LEFT JOIN genres g ON g.id = p.genre_id
@@ -757,7 +758,7 @@ func (dm *DatabaseManager) GetPlaylistByPersistentID(persistentID string) (*Play
 	}
 
 	// Get track count
-	err = dm.DB.QueryRow(`
+	err = dm.DB.QueryRowContext(ctx, `
 		SELECT COUNT(*)
 		FROM playlist_tracks pt
 		JOIN playlists p ON p.id = pt.playlist_id
@@ -772,8 +773,8 @@ func (dm *DatabaseManager) GetPlaylistByPersistentID(persistentID string) (*Play
 }
 
 // ListPlaylists returns all user-created playlists
-func (dm *DatabaseManager) ListPlaylists() ([]Playlist, error) {
-	rows, err := dm.DB.Query(`
+func (dm *DatabaseManager) ListPlaylists(ctx context.Context) ([]Playlist, error) {
+	rows, err := dm.DB.QueryContext(ctx, `
 		SELECT p.id, p.persistent_id, p.name, COALESCE(g.name, ''), p.special_kind,
 			p.track_count
 		FROM playlists p
@@ -800,7 +801,7 @@ func (dm *DatabaseManager) ListPlaylists() ([]Playlist, error) {
 }
 
 // GetPlaylistTracks returns all tracks in a playlist
-func (dm *DatabaseManager) GetPlaylistTracks(playlistPersistentID string, usePlaylistID bool) ([]Track, error) {
+func (dm *DatabaseManager) GetPlaylistTracks(ctx context.Context, playlistPersistentID string, usePlaylistID bool) ([]Track, error) {
 	var whereClause string
 	if usePlaylistID {
 		whereClause = "p.persistent_id = ?"
@@ -824,7 +825,7 @@ func (dm *DatabaseManager) GetPlaylistTracks(playlistPersistentID string, usePla
 		ORDER BY pt.position
 	`, whereClause)
 
-	rows, err := dm.DB.Query(query, playlistPersistentID)
+	rows, err := dm.DB.QueryContext(ctx, query, playlistPersistentID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to query playlist tracks: %w", err)
 	}
@@ -849,8 +850,8 @@ func (dm *DatabaseManager) GetPlaylistTracks(playlistPersistentID string, usePla
 }
 
 // BatchInsertPlaylistTracks associates multiple tracks with a playlist
-func (dm *DatabaseManager) BatchInsertPlaylistTracks(playlistID int64, trackIDs []int64) error {
-	tx, err := dm.DB.Begin()
+func (dm *DatabaseManager) BatchInsertPlaylistTracks(ctx context.Context, playlistID int64, trackIDs []int64) error {
+	tx, err := dm.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -861,13 +862,13 @@ func (dm *DatabaseManager) BatchInsertPlaylistTracks(playlistID int64, trackIDs 
 	}()
 
 	// Clear existing associations
-	_, err = tx.Exec("DELETE FROM playlist_tracks WHERE playlist_id = ?", playlistID)
+	_, err = tx.ExecContext(ctx, "DELETE FROM playlist_tracks WHERE playlist_id = ?", playlistID)
 	if err != nil {
 		return fmt.Errorf("failed to clear existing tracks: %w", err)
 	}
 
 	// Prepare insert statement
-	stmt, err := tx.Prepare("INSERT INTO playlist_tracks (playlist_id, track_id, position) VALUES (?, ?, ?)")
+	stmt, err := tx.PrepareContext(ctx, "INSERT INTO playlist_tracks (playlist_id, track_id, position) VALUES (?, ?, ?)")
 	if err != nil {
 		return fmt.Errorf("failed to prepare statement: %w", err)
 	}
@@ -875,14 +876,14 @@ func (dm *DatabaseManager) BatchInsertPlaylistTracks(playlistID int64, trackIDs 
 
 	// Insert tracks with positions
 	for i, trackID := range trackIDs {
-		_, err = stmt.Exec(playlistID, trackID, i+1)
+		_, err = stmt.ExecContext(ctx, playlistID, trackID, i+1)
 		if err != nil {
 			return fmt.Errorf("failed to insert track %d: %w", trackID, err)
 		}
 	}
 
 	// Update playlist track count
-	_, err = tx.Exec("UPDATE playlists SET track_count = ? WHERE id = ?", len(trackIDs), playlistID)
+	_, err = tx.ExecContext(ctx, "UPDATE playlists SET track_count = ? WHERE id = ?", len(trackIDs), playlistID)
 	if err != nil {
 		return fmt.Errorf("failed to update track count: %w", err)
 	}
@@ -891,7 +892,7 @@ func (dm *DatabaseManager) BatchInsertPlaylistTracks(playlistID int64, trackIDs 
 }
 
 // SearchRadioStations searches for radio stations using FTS5
-func (dm *DatabaseManager) SearchRadioStations(query string, filters *RadioStationFilters) ([]RadioStation, error) {
+func (dm *DatabaseManager) SearchRadioStations(ctx context.Context, query string, filters *RadioStationFilters) ([]RadioStation, error) {
 	var stations []RadioStation
 
 	if filters == nil {
@@ -947,7 +948,7 @@ func (dm *DatabaseManager) SearchRadioStations(query string, filters *RadioStati
 
 	args = append(args, filters.Limit)
 
-	rows, err := dm.DB.Query(searchQuery, args...)
+	rows, err := dm.DB.QueryContext(ctx, searchQuery, args...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to search radio stations: %w", err)
 	}
@@ -970,14 +971,14 @@ func (dm *DatabaseManager) SearchRadioStations(query string, filters *RadioStati
 }
 
 // AddRadioStation adds a new radio station to the database
-func (dm *DatabaseManager) AddRadioStation(station *RadioStation) error {
+func (dm *DatabaseManager) AddRadioStation(ctx context.Context, station *RadioStation) error {
 	// Get or create genre (standardize to Title Case)
 	genreName := station.Genre
 	if genreName != "" {
 		genreName = strings.Title(strings.ToLower(genreName))
 	}
 
-	genreID, err := dm.GetOrCreateGenre(genreName)
+	genreID, err := dm.GetOrCreateGenre(ctx, genreName)
 	if err != nil {
 		return fmt.Errorf("failed to get or create genre: %w", err)
 	}
@@ -987,7 +988,7 @@ func (dm *DatabaseManager) AddRadioStation(station *RadioStation) error {
 		VALUES (?, ?, ?, ?, ?, ?)
 	`
 
-	_, err = dm.DB.Exec(query, station.Name, station.URL, station.Description,
+	_, err = dm.DB.ExecContext(ctx, query, station.Name, station.URL, station.Description,
 		genreID, station.Homepage, true)
 
 	if err != nil {
@@ -1002,9 +1003,9 @@ func (dm *DatabaseManager) AddRadioStation(station *RadioStation) error {
 }
 
 // UpdateRadioStation updates an existing radio station
-func (dm *DatabaseManager) UpdateRadioStation(id int64, station *RadioStation) error {
+func (dm *DatabaseManager) UpdateRadioStation(ctx context.Context, id int64, station *RadioStation) error {
 	// Start transaction
-	tx, err := dm.DB.Begin()
+	tx, err := dm.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -1038,7 +1039,7 @@ func (dm *DatabaseManager) UpdateRadioStation(id int64, station *RadioStation) e
 	// Handle genre update
 	if station.Genre != "" {
 		genreName := strings.Title(strings.ToLower(station.Genre))
-		genreID, genreErr := dm.GetOrCreateGenre(genreName)
+		genreID, genreErr := dm.GetOrCreateGenre(ctx, genreName)
 		if genreErr != nil {
 			return fmt.Errorf("failed to get or create genre: %w", genreErr)
 		}
@@ -1057,7 +1058,7 @@ func (dm *DatabaseManager) UpdateRadioStation(id int64, station *RadioStation) e
 	query := fmt.Sprintf("UPDATE radio_stations SET %s WHERE id = ?", strings.Join(queryParts, ", "))
 	args = append(args, id)
 
-	result, err := tx.Exec(query, args...)
+	result, err := tx.ExecContext(ctx, query, args...)
 	if err != nil {
 		// Check for duplicate URL constraint violation
 		if strings.Contains(err.Error(), "UNIQUE constraint failed: radio_stations.url") {
@@ -1078,8 +1079,8 @@ func (dm *DatabaseManager) UpdateRadioStation(id int64, station *RadioStation) e
 }
 
 // DeleteRadioStation removes a radio station
-func (dm *DatabaseManager) DeleteRadioStation(id int64) error {
-	result, err := dm.DB.Exec("DELETE FROM radio_stations WHERE id = ?", id)
+func (dm *DatabaseManager) DeleteRadioStation(ctx context.Context, id int64) error {
+	result, err := dm.DB.ExecContext(ctx, "DELETE FROM radio_stations WHERE id = ?", id)
 	if err != nil {
 		return fmt.Errorf("failed to delete radio station: %w", err)
 	}
@@ -1096,7 +1097,7 @@ func (dm *DatabaseManager) DeleteRadioStation(id int64) error {
 }
 
 // GetRadioStationByID retrieves a radio station by ID
-func (dm *DatabaseManager) GetRadioStationByID(id int64) (*RadioStation, error) {
+func (dm *DatabaseManager) GetRadioStationByID(ctx context.Context, id int64) (*RadioStation, error) {
 	var station RadioStation
 	query := `
 		SELECT rs.id, rs.name, rs.url, rs.description,
@@ -1108,7 +1109,7 @@ func (dm *DatabaseManager) GetRadioStationByID(id int64) (*RadioStation, error) 
 		WHERE rs.id = ?
 	`
 
-	err := dm.DB.QueryRow(query, id).Scan(
+	err := dm.DB.QueryRowContext(ctx, query, id).Scan(
 		&station.ID, &station.Name, &station.URL, &station.Description,
 		&station.Genre, &station.GenreID, &station.Homepage,
 		&station.VerifiedAt, &station.IsActive, &station.CreatedAt, &station.UpdatedAt,
@@ -1144,8 +1145,8 @@ func validateStationURL(url string) error {
 }
 
 // ImportRadioStations bulk imports radio stations from a slice
-func (dm *DatabaseManager) ImportRadioStations(stations []RadioStation) error {
-	tx, err := dm.DB.Begin()
+func (dm *DatabaseManager) ImportRadioStations(ctx context.Context, stations []RadioStation) error {
+	tx, err := dm.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
@@ -1174,14 +1175,14 @@ func (dm *DatabaseManager) ImportRadioStations(stations []RadioStation) error {
 			genreName = strings.Title(strings.ToLower(genreName))
 		}
 
-		genreID, err := dm.GetOrCreateGenre(genreName)
+		genreID, err := dm.GetOrCreateGenre(ctx, genreName)
 		if err != nil {
 			dm.Logger.Warn("failed to get or create genre for station", zap.String("station", station.Name), zap.Error(err))
 			continue
 		}
 
 		// Insert station (ignore duplicates)
-		_, err = tx.Exec(`
+		_, err = tx.ExecContext(ctx, `
 			INSERT OR IGNORE INTO radio_stations (name, url, description, genre_id, homepage, is_active)
 			VALUES (?, ?, ?, ?, ?, ?)
 		`, station.Name, station.URL, station.Description, genreID, station.Homepage, true)
