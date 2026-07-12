@@ -2,14 +2,14 @@
 
 > High-performance command-line tool and MCP server for iTunes/Apple Music integration on macOS
 
-[![Go Version](https://img.shields.io/badge/Go-1.24.4+-00ADD8?style=flat&logo=go)](https://golang.org/)
+[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8?style=flat&logo=go)](https://golang.org/)
 [![Platform](https://img.shields.io/badge/Platform-macOS-blue?style=flat&logo=apple)](https://www.apple.com/macos/)
 [![SQLite](https://img.shields.io/badge/Database-SQLite%20FTS5-003B57?style=flat&logo=sqlite)](https://www.sqlite.org/)
 [![MCP](https://img.shields.io/badge/MCP-Server-green?style=flat)](https://github.com/mark3labs/mcp-go)
 
 ## Overview
 
-A comprehensive Go-based tool that bridges command-line interfaces and AI applications with your Apple Music library. Features ultra-fast search capabilities (<7ms), smart playback control, and seamless integration with Large Language Models through the Model Context Protocol (MCP).
+A Go-based tool that bridges command-line interfaces and AI applications with your Apple Music library. Features ultra-fast search (<7ms via SQLite FTS5), smart playback control, and integration with Large Language Models through the Model Context Protocol (MCP).
 
 ### Key Features
 
@@ -17,13 +17,13 @@ A comprehensive Go-based tool that bridges command-line interfaces and AI applic
 - **Smart Playback**: ID-based track lookup with playlist context support
 - **Audio Control**: EQ presets and output device management (local/AirPlay)
 - **MCP Integration**: 14 specialized tools for AI/LLM applications
-- **Database-First**: Normalized SQLite schema with persistent Apple Music IDs
-- **Real-Time Sync**: JXA automation bridge for live Apple Music control
-- **Radio Stations**: 25+ Apple Music stations with database search
+- **Database-First**: Normalized SQLite schema keyed by persistent Apple Music IDs
+- **Context-Aware**: `context.Context` flows from MCP requests down to SQLite queries and JXA processes, so cancellation propagates end to end
+- **Radio Stations**: Apple Music stations with database-backed CRUD and search
 
 ## Project History
 
-This project evolved from a legacy VIM plugin for iTunes integration originally developed 8 years ago. The original VIM plugin remains untouched in the `master` branch as a reference for the earlier iTunes integration approach. The current implementation represents a complete rewrite focused on modern Apple Music integration, database performance, and AI/LLM compatibility through the MCP protocol.
+This project evolved from a legacy VIM plugin for iTunes integration. The original plugin remains untouched in the `master` branch as a reference. The current implementation is a complete rewrite focused on modern Apple Music integration, database performance, and AI/LLM compatibility through the MCP protocol.
 
 ## Architecture
 
@@ -35,84 +35,44 @@ This project evolved from a legacy VIM plugin for iTunes integration originally 
           |                        |                         |
           +----------+-------------+                         |
                      |                                       |
-          +----------v------------+              +---------v---------+
-          |   Go Application      |              |   JXA Scripts     |
-          |   Core Logic          |<-------------+   Automation      |
-          +----------+------------+              +-------------------+
-                     |
+          +----------v------------+              +----------v--------+
+          |   itunes.Client       |              |   JXA Scripts     |
+          |   (core library)      |<-------------+   (via osascript  |
+          +----------+------------+              |    stdin)         |
+                     |                           +-------------------+
           +----------v------------+
           |   SQLite Database     |
           |   FTS5 Search         |
           +-----------------------+
 ```
 
+- **Search path**: queries hit the local SQLite database directly — the Apple Music app is not involved.
+- **Playback path**: Go pipes embedded JXA scripts to `osascript` via stdin (no temp files) to drive the Apple Music app.
+- **Library refresh**: Apple Music → JXA → SQLite (1–3 minutes for large libraries).
+
 ## Installation
 
 ### Prerequisites
 
 - **macOS** (required for Apple Music integration)
-- **Go 1.24.4+** 
+- **Go 1.25+**
 - **Apple Music app** (installed and configured)
-- **Terminal access** with appropriate permissions for AppleScript
+- **Terminal access** with Automation permissions for AppleScript/JXA
 
 ### Build from Source
 
 ```bash
-# Clone the repository
 git clone <repository-url>
 cd itunes
 
-# Build CLI tool
-go build -o bin/itunes itunes.go
-
-# Build MCP server
-go build -o bin/mcp-itunes ./mcp-server
-
-# Build migration tool (if needed)
-go build -o bin/itunes-migrate ./cmd/migrate
+go build -o bin/itunes .                 # CLI tool
+go build -o bin/mcp-itunes ./mcp-server  # MCP server
+go build -o bin/itunes-migrate ./cmd/migrate  # Migration tool
 ```
-
-### Binary Locations
-
-After building, binaries are available in the `bin/` directory:
-- `bin/itunes` - CLI tool
-- `bin/mcp-itunes` - MCP server
-- `bin/itunes-migrate` - Database migration tool
 
 ## Quick Start
 
-### CLI Usage
-
-```bash
-# Search your music library
-./bin/itunes search "jazz"
-./bin/itunes search "Miles Davis"
-
-# Play tracks with context
-./bin/itunes play "My Playlist" "" "" "TRACK_ID_FROM_SEARCH"
-./bin/itunes play "" "Album Name" "Track Name"
-
-# Check current playback
-./bin/itunes now-playing
-./bin/itunes status  # alias for now-playing
-```
-
-### MCP Server
-
-```bash
-# Start MCP server (stdio transport)
-./bin/mcp-itunes
-
-# The server provides 14 tools including:
-# - search_itunes, play_track, now_playing
-# - check_eq, set_eq (EQ control)
-# - get_output_device, set_output_device (audio output)
-# - search_stations, play_stream (radio stations)
-# - refresh_library, list_playlists, get_playlist_tracks
-# - search_advanced
-```
-
-### Database Setup
+### Database Setup (first)
 
 ```bash
 # First-time setup or library refresh (1-3 minutes)
@@ -122,88 +82,93 @@ After building, binaries are available in the `bin/` directory:
 ./bin/itunes-migrate -validate
 ```
 
-**When to refresh**: First install, library changes, metadata updates, or search issues.
+**When to refresh**: first install, library changes, metadata updates, or search issues.
 
-**Process**: Apple Music → JXA → SQLite with persistent IDs and FTS5 index.
-
-## Usage Examples
-
-### Search Operations
+### CLI Usage
 
 ```bash
-# Basic search
-./bin/itunes search "blue note"
+# Search your music library
+./bin/itunes search "jazz"
+./bin/itunes search "Miles Davis"
 
-# Set custom search limit
-ITUNES_SEARCH_LIMIT=25 ./bin/itunes search "jazz"
+# Play tracks: play <playlist> [album] [track] [trackID]
+./bin/itunes play "My Playlist" "" "" "B258396D58E2ECC9"   # ID with playlist context
+./bin/itunes play "" "Kind of Blue" "So What"              # album + track name
 
-# Search with custom database path
-ITUNES_DB_PATH=/custom/path/library.db ./bin/itunes search "classical"
+# Current playback status
+./bin/itunes now-playing   # or: status
+
+# Radio stations
+./bin/itunes search-stations "jazz"
+./bin/itunes list-stations
+./bin/itunes add-station --name "Name" --url "itmss://..." [--genre g --description d --homepage url]
+./bin/itunes update-station <id> [--name/--url/--genre/--description/--homepage ...]
+./bin/itunes delete-station <id>
+./bin/itunes import-stations stations.json
+./bin/itunes export-stations stations.json
 ```
 
-### Playback Control
+### MCP Server
 
 ```bash
-# ID-based playback (most reliable)
-./bin/itunes play "" "" "" "B258396D58E2ECC9"
-
-# Playlist context (enables continuous playback)
-./bin/itunes play "Jazz Collection" "" "" "B258396D58E2ECC9"
-
-# Album context (helps locate track)
-./bin/itunes play "" "Kind of Blue" "So What"
-
-# Name-based fallback
-./bin/itunes play "" "" "Take Five"
+# Start MCP server (stdio transport)
+./bin/mcp-itunes
 ```
 
+Claude Desktop / Claude Code configuration:
 
-## MCP Integration
+```json
+{
+  "mcpServers": {
+    "itunes": {
+      "command": "/path/to/bin/mcp-itunes"
+    }
+  }
+}
+```
 
-The MCP server provides 14 specialized tools for AI applications:
-
-### LLM Integration
-
-For intelligent music curation with AI applications, see the comprehensive system prompt in [`Phase2/system_prompt.md`](Phase2/system_prompt.md) which includes:
-
-- Complete tool descriptions and usage guidelines
-- Music curation best practices  
-- EQ and audio output control instructions
-- Radio station discovery and playback
-- Proper restrictions and safety measures
-
-### Core Tools
+## MCP Tools (14)
 
 **Music Library:**
-- `search_itunes` - Search library (<7ms FTS5 performance)
-- `search_advanced` - Advanced search with filters (genre, rating, starred)
-- `play_track` - Play with ID-based lookup and playlist context
-- `now_playing` - Current playback status and track info
+- `search_itunes` — search library (<7ms FTS5 performance)
+- `search_advanced` — filtered search (genre, artist, album, rating, starred, streaming)
+- `play_track` — play with ID-based lookup and optional playlist context
+- `now_playing` — current playback status and track info
+- `refresh_library` — rebuild database from Apple Music (1–3 min, resource-intensive)
 
-**Audio Control (New):**
-- `check_eq` - Get current EQ status and available presets
-- `set_eq` - Apply EQ presets (Rock, Jazz, Classical, etc.) or enable/disable
-- `get_output_device` - Check current audio output (local/AirPlay)
-- `set_output_device` - Switch to local output (AirPlay selection manual)
+**Playlists:**
+- `list_playlists` — all playlists with metadata
+- `get_playlist_tracks` — tracks in a specific playlist
 
-**Radio Stations:**
-- `search_stations` - Find Apple Music radio stations by genre/name
-- `play_stream` - Play streaming URLs (itmss://, https://)
+**Radio & Streams:**
+- `search_stations` — find Apple Music radio stations by genre/name
+- `play_stream` — play streaming URLs (`itmss://`, `https://`)
 
-**Playlists & Library:**
-- `list_playlists` - All playlists with metadata
-- `get_playlist_tracks` - Tracks in specific playlist
-- `refresh_library` - Rebuild database from Apple Music (1-3 min)
+**EQ & Audio Output:**
+- `check_eq` — current EQ status and available presets
+- `set_eq` — apply EQ presets (Rock, Jazz, Classical, …) or enable/disable
+- `get_output_device` — current audio output (local/AirPlay)
+- `list_output_devices` — available output devices
+- `set_output_device` — switch to local output (AirPlay selection must be manual)
 
-**Stream Integration:**
-- `play_stream` - Play any streaming URL (Apple Music stations, web streams)
+**MCP Resources:** `itunes://database/stats`, `itunes://database/playlists`
+
+### Usage Pattern
+
+Best practice is ID-based playback with playlist context for continuous play:
+
+```json
+{"track_id": "B258396D58E2ECC9", "playlist": "My Jazz Collection"}
+```
+
+Track IDs come from search results and are Apple Music persistent IDs, which avoids name-matching and encoding issues.
 
 ## Performance
 
 - **Search**: <7ms queries, <5µs cache hits
 - **Database**: ~760 bytes per track, ~800 tracks/sec migration
-- **Memory**: ~64MB cache, pure Go SQLite (no CGO)
 - **Storage**: ~1MB per 1,000 tracks including FTS5 indexes
+- **Driver**: pure Go SQLite (`modernc.org/sqlite`, no CGO)
 
 ## Environment Variables
 
@@ -215,67 +180,54 @@ For intelligent music curation with AI applications, see the comprehensive syste
 
 ## Development
 
-### Build & Test
-
-```bash
-# Build all binaries
-go build -o bin/itunes itunes.go
-go build -o bin/mcp-itunes ./mcp-server
-go build -o bin/itunes-migrate ./cmd/migrate
-
-# Test & validate
-go test ./...                           # All tests
-go test ./database -bench=BenchmarkSearch  # Performance
-go run ./mcp-server                     # MCP server test
-./bin/itunes search "jazz"              # CLI test
-```
-
 ### Project Structure
 
 ```
-├── itunes.go              # CLI application
-├── mcp-server/            # MCP server (14 tools)
-├── itunes/                # Core library + JXA scripts
-├── database/              # SQLite + FTS5 search
-└── cmd/migrate/           # Database migration tool
+├── itunes.go              # CLI application (command dispatch + handlers)
+├── mcp-server/            # MCP server (14 tools, grouped registration)
+├── itunes/                # Core library: Client type, playback, EQ, JXA scripts
+│   └── scripts/           # Embedded JXA automation scripts
+├── database/              # SQLite + FTS5: schema, search, migrations
+├── logging/               # zap logger setup
+└── cmd/migrate/           # Database migration/validation tool
+```
+
+The core library exposes `itunes.NewClient(logger)` owning the database connection and search manager; playback and audio-control functions are package-level and take a `context.Context`.
+
+### Build, Test, Lint
+
+```bash
+./run_test.sh        # go test -v ./...
+./run_lint.sh        # golangci-lint (zero findings expected)
+./run_format.sh      # gofmt -w .
+
+# Or directly:
+go test ./...
+go test ./database -bench=BenchmarkSearch
 ```
 
 ## Troubleshooting
 
-**Database Issues:**
+**Database issues:**
 ```bash
 ./bin/itunes-migrate -from-script    # Initialize/refresh
 ./bin/itunes-migrate -validate       # Check status
 ```
 
-**Playback Issues:**
+**Playback issues:**
 - Use `track_id` from search results (most reliable)
-- Ensure Apple Music app is running
-- Grant AppleScript permissions: System Preferences → Security & Privacy → Automation
+- Ensure the Apple Music app is running
+- Grant Automation permissions: System Settings → Privacy & Security → Automation
 
-**EQ/Audio Issues:**
-- EQ unavailable during AirPlay (macOS limitation)
-- AirPlay device selection must be done manually in Music app
+**EQ/Audio issues:**
+- EQ status is unavailable while using AirPlay (macOS limitation)
+- Specific AirPlay device selection must be done manually in the Music app
 
-## Contributing
-
-1. Fork and clone the repository
-2. Install Go 1.24.4+ 
-3. Build and test the project
-4. Follow Go conventions and run `golangci-lint`
-5. Add tests for new functionality
-
-### Testing & Quality
-
-```bash
-# Code quality
-golangci-lint run    # Linting
-go fmt ./...         # Formatting
-go test ./...        # All tests
-```
+**Radio station playback:**
+- Stations must use `itmss://` protocol URLs for playback; `https://` URLs are homepage links only
 
 ## License & Acknowledgments
 
-**MIT License** - See LICENSE file for details.
+**MIT License** — see LICENSE file for details.
 
-Thanks to Apple Music, SQLite FTS5, MCP Protocol, and modernc.org/sqlite.
+Thanks to Apple Music, SQLite FTS5, the MCP Protocol, and `modernc.org/sqlite`.
