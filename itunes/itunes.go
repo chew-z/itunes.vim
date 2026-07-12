@@ -163,26 +163,13 @@ type AirPlayDevice struct {
 
 // runScript executes a JXA script and returns its standard output.
 func runScript(ctx context.Context, scriptContent string, args []string) ([]byte, error) {
-	tempFile, err := os.CreateTemp("", "itunes_*.js")
-	if err != nil {
-		return nil, &ITunesError{Op: "runScript: create temp file", Kind: ErrJXAScript, Err: err}
-	}
-	defer func() { _ = tempFile.Close(); _ = os.Remove(tempFile.Name()) }() //nolint:errcheck // best-effort temp cleanup
-
-	if _, err := tempFile.WriteString(scriptContent); err != nil {
-		_ = tempFile.Close() //nolint:errcheck // cleanup after write failure
-		return nil, &ITunesError{Op: "runScript: write to temp file", Kind: ErrJXAScript, Err: err}
-	}
-	if err := tempFile.Close(); err != nil {
-		return nil, &ITunesError{Op: "runScript: close temp file", Kind: ErrJXAScript, Err: err}
-	}
-
-	cmdArgs := []string{"-l", "JavaScript", tempFile.Name()}
+	cmdArgs := []string{"-l", "JavaScript", "-"}
 	if len(args) > 0 {
 		cmdArgs = append(cmdArgs, args...)
 	}
 
 	cmd := exec.CommandContext(ctx, "osascript", cmdArgs...)
+	cmd.Stdin = strings.NewReader(scriptContent)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -194,7 +181,7 @@ func runScript(ctx context.Context, scriptContent string, args []string) ([]byte
 			Kind: ErrJXAScript,
 			Err:  fmt.Errorf("script failed with stderr: %s: %w", stderr.String(), err),
 			Context: map[string]interface{}{
-				"script": filepath.Base(tempFile.Name()),
+				"script": "inline JXA",
 				"args":   args,
 			},
 		}
@@ -204,9 +191,12 @@ func runScript(ctx context.Context, scriptContent string, args []string) ([]byte
 }
 
 // GetEQStatus retrieves the current equalizer status from Apple Music.
-func GetEQStatus() (*EQStatus, error) {
+func GetEQStatus(ctx context.Context) (*EQStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	// First, check if audio is being routed through AirPlay.
-	audioOutput, err := GetAudioOutput()
+	audioOutput, err := GetAudioOutput(ctx)
 	if err != nil {
 		return nil, &ITunesError{Op: "GetEQStatus: get audio output", Kind: ErrAppleMusic, Err: err}
 	}
@@ -218,9 +208,6 @@ func GetEQStatus() (*EQStatus, error) {
 			Err:  fmt.Errorf("EQ status cannot be checked while playing to an AirPlay device ('%s')", audioOutput.DeviceName),
 		}
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 
 	output, err := runScript(ctx, getEQScript, nil)
 	if err != nil {
@@ -236,8 +223,8 @@ func GetEQStatus() (*EQStatus, error) {
 }
 
 // GetAudioOutput retrieves the current audio output device information.
-func GetAudioOutput() (*AudioOutput, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func GetAudioOutput(ctx context.Context) (*AudioOutput, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	output, err := runScript(ctx, getAudioOutputScript, nil)
@@ -263,16 +250,19 @@ func GetAudioOutput() (*AudioOutput, error) {
 
 // SetEQStatus sets the equalizer state in Apple Music.
 // It can enable/disable the EQ and/or set a specific preset.
-func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
+func SetEQStatus(ctx context.Context, preset string, enabled *bool) (*EQStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	// First, check if audio is being routed through AirPlay.
-	audioOutput, err := GetAudioOutput()
+	audioOutput, err := GetAudioOutput(ctx)
 	if err != nil {
 		return nil, &ITunesError{Op: "SetEQStatus: get audio output", Kind: ErrAppleMusic, Err: err}
 	}
 
 	if audioOutput.OutputType == "airplay" {
 		// Get current EQ status instead of returning an error
-		currentStatus, statusErr := GetEQStatus()
+		currentStatus, statusErr := GetEQStatus(ctx)
 		if statusErr != nil {
 			return nil, &ITunesError{
 				Op:   "SetEQStatus: get current EQ status for AirPlay",
@@ -299,9 +289,6 @@ func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
 			}()),
 		}, nil
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 
 	var args []string
 	if enabled != nil {
@@ -337,8 +324,8 @@ func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
 }
 
 // ListAirPlayDevices retrieves a list of all available AirPlay devices.
-func ListAirPlayDevices() ([]AirPlayDevice, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func ListAirPlayDevices(ctx context.Context) ([]AirPlayDevice, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	output, err := runScript(ctx, listAirPlayDevicesScript, nil)
@@ -366,8 +353,8 @@ func ListAirPlayDevices() ([]AirPlayDevice, error) {
 }
 
 // SetAirPlayDevice sets the active AirPlay device.
-func SetAirPlayDevice(deviceName string) (*AirPlayDevice, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func SetAirPlayDevice(ctx context.Context, deviceName string) (*AirPlayDevice, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	output, err := runScript(ctx, setAirPlayDeviceScript, []string{deviceName})
@@ -397,8 +384,8 @@ func SetAirPlayDevice(deviceName string) (*AirPlayDevice, error) {
 // PlayPlaylistTrack runs the embedded iTunes_Play_Playlist_Track.js script to play a playlist, album, or track.
 // If trackName is "", only the playlist/album will play. If trackID is provided, it takes priority over trackName.
 // Either playlistName or albumName can be provided for context, but not both.
-func PlayPlaylistTrack(playlistName, albumName, trackName, trackID string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+func PlayPlaylistTrack(ctx context.Context, playlistName, albumName, trackName, trackID string) error {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
 	// Always pass playlist name (empty string if not provided)
@@ -456,8 +443,8 @@ func PlayPlaylistTrack(playlistName, albumName, trackName, trackID string) error
 
 // RefreshLibraryCache runs the embedded iTunes_Refresh_Library.js script to build a comprehensive library cache.
 // The cache is stored as JSON in $TMPDIR/itunes-cache/library.json for fast searching.
-func RefreshLibraryCache() error {
-	ctx, cancel := context.WithTimeout(context.Background(), 180*time.Second) // 3 minutes for full library scan
+func RefreshLibraryCache(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 180*time.Second) // 3 minutes for full library scan
 	defer cancel()
 
 	// Ensure cache directory exists
@@ -568,12 +555,15 @@ func processRefreshResponse(cacheDir string, responseJSON []byte) error {
 }
 
 // GetNowPlaying runs the embedded iTunes_Now_Playing.js script to get current playback status
-func GetNowPlaying() (*NowPlayingStatus, error) {
+func GetNowPlaying(ctx context.Context) (*NowPlayingStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
 	var status *NowPlayingStatus
 	var err error
 
 	err = retryWithBackoff(func() error {
-		status, err = getNowPlayingAttempt()
+		status, err = getNowPlayingAttempt(ctx)
 		return err
 	}, 3)
 
@@ -584,10 +574,7 @@ func GetNowPlaying() (*NowPlayingStatus, error) {
 	return status, nil
 }
 
-func getNowPlayingAttempt() (*NowPlayingStatus, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-
+func getNowPlayingAttempt(ctx context.Context) (*NowPlayingStatus, error) {
 	responseJSON, err := runScript(ctx, nowPlayingScript, nil)
 	if err != nil {
 		return nil, &ITunesError{
@@ -648,9 +635,9 @@ func getNowPlayingAttempt() (*NowPlayingStatus, error) {
 }
 
 // PlayPlaylistTrackWithStatus runs PlayPlaylistTrack and returns the result with current track info
-func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID string) (*PlayResult, error) {
+func PlayPlaylistTrackWithStatus(ctx context.Context, playlistName, albumName, trackName, trackID string) (*PlayResult, error) {
 	// First, attempt to play the track
-	err := PlayPlaylistTrack(playlistName, albumName, trackName, trackID)
+	err := PlayPlaylistTrack(ctx, playlistName, albumName, trackName, trackID)
 
 	result := &PlayResult{
 		Success: err == nil,
@@ -662,10 +649,14 @@ func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID str
 	}
 
 	// Give Apple Music a moment to start playing
-	time.Sleep(1 * time.Second)
+	select {
+	case <-time.After(time.Second):
+	case <-ctx.Done():
+		return result, ctx.Err()
+	}
 
 	// Get current playing status
-	nowPlaying, nowPlayingErr := GetNowPlaying()
+	nowPlaying, nowPlayingErr := GetNowPlaying(ctx)
 	if nowPlayingErr != nil {
 		// Don't fail the whole operation if we can't get now playing info
 		result.Message = "Playback started, but could not get current track info"
@@ -691,8 +682,8 @@ func PlayPlaylistTrackWithStatus(playlistName, albumName, trackName, trackID str
 }
 
 // PlayStreamURL plays a stream from any supported streaming URL (itmss://, https://, http://, etc.)
-func PlayStreamURL(streamURL string) (*PlayResult, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+func PlayStreamURL(ctx context.Context, streamURL string) (*PlayResult, error) {
+	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 
 	stdout, err := runScript(ctx, playStreamScript, []string{streamURL})
@@ -719,10 +710,14 @@ func PlayStreamURL(streamURL string) (*PlayResult, error) {
 	}
 
 	// Give Apple Music more time to process the new stream URL
-	time.Sleep(3 * time.Second)
+	select {
+	case <-time.After(3 * time.Second):
+	case <-ctx.Done():
+		return result, ctx.Err()
+	}
 
 	// Get current playing status
-	nowPlaying, nowPlayingErr := GetNowPlaying()
+	nowPlaying, nowPlayingErr := GetNowPlaying(ctx)
 	if nowPlayingErr != nil {
 		// Don't fail the whole operation if we can't get now playing info
 		result.Message = strings.TrimPrefix(response, "OK: ")

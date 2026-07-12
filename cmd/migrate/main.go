@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -219,14 +220,14 @@ func migrateFromScript() error {
 
 	// Dry run - just show what would be done
 	if *dryRun {
-		fmt.Println("Would run: itunes.RefreshLibraryCache()")
+		fmt.Println("Would run: itunes.RefreshLibraryCache(context.Background())")
 		fmt.Println("Would migrate results to:", expandPath(*dbPath))
 		return nil
 	}
 
 	// Run refresh script
 	startTime := time.Now()
-	if err := itunes.RefreshLibraryCache(); err != nil {
+	if err := itunes.RefreshLibraryCache(context.Background()); err != nil {
 		return fmt.Errorf("failed to refresh library: %w", err)
 	}
 

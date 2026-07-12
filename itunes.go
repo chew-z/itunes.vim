@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -115,14 +116,14 @@ func main() {
 			trackID = os.Args[5]
 		}
 
-		if err := itunes.PlayPlaylistTrack(playlist, album, track, trackID); err != nil {
+		if err := itunes.PlayPlaylistTrack(context.Background(), playlist, album, track, trackID); err != nil {
 			fmt.Println("Play failed:", err)
 		} else {
 			fmt.Println("Playback started.")
 		}
 
 	case "now-playing", "status":
-		status, err := itunes.GetNowPlaying()
+		status, err := itunes.GetNowPlaying(context.Background())
 		if err != nil {
 			fmt.Println("Failed to get current status:", err)
 			return

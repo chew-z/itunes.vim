@@ -270,7 +270,7 @@ func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 	}
 
 	// Use the enhanced function that returns current track info
-	result, err := itunes.PlayPlaylistTrackWithStatus(playlist, album, track, trackID)
+	result, err := itunes.PlayPlaylistTrackWithStatus(ctx, playlist, album, track, trackID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Playback operation failed: %v", err)), nil
 	}
@@ -289,7 +289,7 @@ func playHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToo
 }
 
 func nowPlayingHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	status, err := itunes.GetNowPlaying()
+	status, err := itunes.GetNowPlaying(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get current playback status: %v", err)), nil
 	}
@@ -304,7 +304,7 @@ func nowPlayingHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 
 func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	// First refresh the library cache (creates JSON files)
-	err := itunes.RefreshLibraryCache()
+	err := itunes.RefreshLibraryCache(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Library refresh failed: %v", err)), nil
 	}
@@ -507,7 +507,7 @@ func playStreamHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 	}
 
 	// Play the stream using the new function
-	result, err := itunes.PlayStreamURL(params.URL)
+	result, err := itunes.PlayStreamURL(ctx, params.URL)
 	if err != nil {
 		return mcp.NewToolResultError("Failed to play stream: " + err.Error()), nil
 	}
@@ -575,7 +575,7 @@ func playlistsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]m
 }
 
 func checkEqHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	status, err := itunes.GetEQStatus()
+	status, err := itunes.GetEQStatus(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get EQ status: %v", err)), nil
 	}
@@ -602,7 +602,7 @@ func setEqHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTo
 		return mcp.NewToolResultError("At least one parameter (preset or enabled) must be provided."), nil
 	}
 
-	status, err := itunes.SetEQStatus(preset, enabled)
+	status, err := itunes.SetEQStatus(ctx, preset, enabled)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to set EQ status: %v", err)), nil
 	}
@@ -616,7 +616,7 @@ func setEqHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallTo
 }
 
 func getOutputDeviceHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	output, err := itunes.GetAudioOutput()
+	output, err := itunes.GetAudioOutput(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get audio output: %v", err)), nil
 	}
@@ -630,7 +630,7 @@ func getOutputDeviceHandler(ctx context.Context, request mcp.CallToolRequest) (*
 }
 
 func listOutputDevicesHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	devices, err := itunes.ListAirPlayDevices()
+	devices, err := itunes.ListAirPlayDevices(ctx)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list AirPlay devices: %v", err)), nil
 	}
@@ -649,7 +649,7 @@ func setOutputDeviceHandler(ctx context.Context, request mcp.CallToolRequest) (*
 		return mcp.NewToolResultError(fmt.Sprintf("Invalid device_name parameter: %v", err)), nil
 	}
 
-	device, err := itunes.SetAirPlayDevice(deviceName)
+	device, err := itunes.SetAirPlayDevice(ctx, deviceName)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to set AirPlay device: %v", err)), nil
 	}
