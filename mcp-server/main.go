@@ -17,6 +17,8 @@ import (
 	"go.uber.org/zap"
 )
 
+var client *itunes.Client
+
 func main() {
 	// Initialize logger
 	logger, err := logging.InitLogger("info")
@@ -27,10 +29,11 @@ func main() {
 	defer func() { _ = logger.Sync() }() //nolint:errcheck // stderr sync errors are expected on macOS
 
 	// Initialize database (now default mode)
-	if err := itunes.InitDatabase(logger); err != nil {
+	client, err = itunes.NewClient(logger)
+	if err != nil {
 		logger.Fatal("Failed to initialize database", zap.Error(err))
 	}
-	defer itunes.CloseDatabase()
+	defer func() { _ = client.Close() }() //nolint:errcheck // process shutdown cleanup
 
 	// Create MCP server with tool and resource capabilities
 	mcpServer := server.NewMCPServer(
@@ -240,7 +243,7 @@ func searchHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallT
 	}
 
 	// Search using database (now default)
-	tracks, err := itunes.SearchTracks(query)
+	tracks, err := client.SearchTracks(query)
 	if err != nil {
 		var itunesErr *itunes.ITunesError
 		if errors.As(err, &itunesErr) && itunesErr.Kind == itunes.ErrNoTracksFound {
@@ -313,13 +316,13 @@ func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 	cacheDir := filepath.Join(os.TempDir(), "itunes-cache")
 
 	// Migrate from the enhanced JSON file (or fallback to legacy)
-	err = itunes.DBManager.MigrateFromJSON(cacheDir, nil)
+	err = client.MigrateFromJSON(cacheDir, nil)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to migrate data to database: %v", err)), nil
 	}
 
 	// Get database statistics
-	stats, err := itunes.DBManager.GetStats()
+	stats, err := client.GetDatabaseStats()
 	if err != nil {
 		return mcp.NewToolResultText("Library refresh and database update completed, but couldn't get statistics."), nil
 	}
@@ -335,12 +338,12 @@ func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 		stats.ArtistCount,
 		stats.AlbumCount,
 		float64(stats.DatabaseSize)/(1024*1024),
-		itunes.SearchLimit)), nil
+		client.SearchLimit())), nil
 }
 
 // Resource handlers for cache access
 func dbStatsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	stats, err := itunes.GetDatabaseStats()
+	stats, err := client.GetDatabaseStats()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get database stats: %w", err)
 	}
@@ -360,7 +363,7 @@ func dbStatsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp
 }
 
 func listPlaylistsHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	playlists, err := itunes.ListPlaylists()
+	playlists, err := client.ListPlaylists()
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to list playlists: %v", err)), nil
 	}
@@ -401,7 +404,7 @@ func getPlaylistTracksHandler(ctx context.Context, request mcp.CallToolRequest) 
 
 	useID := request.GetBool("use_id", false)
 
-	tracks, err := itunes.GetPlaylistTracks(playlist, useID)
+	tracks, err := client.GetPlaylistTracks(playlist, useID)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get playlist tracks: %v", err)), nil
 	}
@@ -471,7 +474,7 @@ func searchAdvancedHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 
 	// Search using database with filters
-	tracks, err := itunes.SearchTracksFromDatabase(query, filters)
+	tracks, err := client.SearchTracksFromDatabase(query, filters)
 	if err != nil {
 		var itunesErr *itunes.ITunesError
 		if errors.As(err, &itunesErr) && itunesErr.Kind == itunes.ErrNoTracksFound {
@@ -540,7 +543,7 @@ func searchStationsHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 	}
 
 	// Search for stations using the new function
-	result, err := itunes.SearchStations(params.Query)
+	result, err := client.SearchStations(params.Query)
 	if err != nil {
 		return mcp.NewToolResultError("Failed to search stations: " + err.Error()), nil
 	}
@@ -555,7 +558,7 @@ func searchStationsHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 }
 
 func playlistsHandler(ctx context.Context, request mcp.ReadResourceRequest) ([]mcp.ResourceContents, error) {
-	playlists, err := itunes.ListPlaylists()
+	playlists, err := client.ListPlaylists()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get playlists: %w", err)
 	}

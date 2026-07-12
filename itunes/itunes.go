@@ -736,12 +736,12 @@ func PlayStreamURL(ctx context.Context, streamURL string) (*PlayResult, error) {
 	return result, nil
 }
 
-// Database integration variables
-var (
-	DBManager     *database.DatabaseManager
-	SearchManager *database.SearchManager
-	SearchLimit   = 15 // Default search limit, can be overridden by ITUNES_SEARCH_LIMIT env var
-)
+// Client provides database-backed iTunes operations.
+type Client struct {
+	db          *database.DatabaseManager
+	search      *database.SearchManager
+	searchLimit int
+}
 
 func retryWithBackoff(fn func() error, maxRetries int) error {
 	var lastErr error
@@ -758,56 +758,47 @@ func retryWithBackoff(fn func() error, maxRetries int) error {
 	return fmt.Errorf("failed after %d retries, last error: %w", maxRetries, lastErr)
 }
 
-// InitDatabase initializes the SQLite database connection
-func InitDatabase(logger *zap.Logger) error {
+// NewClient initializes the SQLite database connection.
+func NewClient(logger *zap.Logger) (*Client, error) {
+	searchLimit := 15
 	// Get search limit from environment if set
 	if limitStr := os.Getenv("ITUNES_SEARCH_LIMIT"); limitStr != "" {
 		if limit, err := strconv.Atoi(limitStr); err == nil && limit > 0 {
-			SearchLimit = limit
+			searchLimit = limit
 		}
 	}
 
 	// Initialize database manager
 	dm, err := database.NewDatabaseManager(database.PrimaryDBPath, logger)
 	if err != nil {
-		return &ITunesError{Op: "InitDatabase: new database manager", Kind: ErrDatabase, Err: err}
+		return nil, &ITunesError{Op: "NewClient: new database manager", Kind: ErrDatabase, Err: err}
 	}
 
 	// Run migrations to ensure schema is up to date
 	if err := dm.RunMigrations(); err != nil {
 		_ = dm.Close() //nolint:errcheck // already returning migration error
-		return &ITunesError{Op: "InitDatabase: run migrations", Kind: ErrDatabase, Err: err}
+		return nil, &ITunesError{Op: "NewClient: run migrations", Kind: ErrDatabase, Err: err}
 	}
 
-	DBManager = dm
-	SearchManager = database.NewSearchManager(dm)
-	return nil
+	return &Client{db: dm, search: database.NewSearchManager(dm), searchLimit: searchLimit}, nil
 }
 
-// CloseDatabase closes the database connection
-func CloseDatabase() {
-	if DBManager != nil {
-		_ = DBManager.Close() //nolint:errcheck // CloseDatabase cannot return an error
-		DBManager = nil
-		SearchManager = nil
-	}
+// Close closes the database connection.
+func (c *Client) Close() error {
+	return c.db.Close()
 }
 
 // SearchTracksFromDatabase searches tracks using the SQLite database with FTS5
-func SearchTracksFromDatabase(query string, filters *database.SearchFilters) ([]Track, error) {
-	if DBManager == nil {
-		return nil, &ITunesError{Op: "SearchTracksFromDatabase", Kind: ErrDatabase, Err: errors.New("database not initialized")}
-	}
-
+func (c *Client) SearchTracksFromDatabase(query string, filters *database.SearchFilters) ([]Track, error) {
 	// Apply default search limit if not specified in filters
 	if filters == nil {
-		filters = &database.SearchFilters{Limit: SearchLimit}
+		filters = &database.SearchFilters{Limit: c.searchLimit}
 	} else if filters.Limit <= 0 {
-		filters.Limit = SearchLimit
+		filters.Limit = c.searchLimit
 	}
 
 	// Use search manager for cached search
-	dbTracks, err := SearchManager.SearchWithCache(query, filters)
+	dbTracks, err := c.search.SearchWithCache(query, filters)
 	if err != nil {
 		return nil, &ITunesError{Op: "SearchTracksFromDatabase: search with cache", Kind: ErrDatabase, Err: err}
 	}
@@ -836,12 +827,8 @@ func SearchTracksFromDatabase(query string, filters *database.SearchFilters) ([]
 }
 
 // GetTrackByPersistentID retrieves a single track by its persistent ID
-func GetTrackByPersistentID(persistentID string) (*Track, error) {
-	if DBManager == nil {
-		return nil, &ITunesError{Op: "GetTrackByPersistentID", Kind: ErrDatabase, Err: errors.New("database not initialized")}
-	}
-
-	dbTrack, err := DBManager.GetTrackByPersistentID(persistentID)
+func (c *Client) GetTrackByPersistentID(persistentID string) (*Track, error) {
+	dbTrack, err := c.db.GetTrackByPersistentID(persistentID)
 	if errors.Is(err, database.ErrTrackNotFound) {
 		return nil, &ITunesError{Op: "GetTrackByPersistentID", Kind: ErrNoTracksFound, Err: fmt.Errorf("track with persistent ID '%s' not found", persistentID)}
 	}
@@ -873,12 +860,8 @@ func GetTrackByPersistentID(persistentID string) (*Track, error) {
 }
 
 // GetPlaylistTracks retrieves all tracks in a playlist
-func GetPlaylistTracks(playlistIdentifier string, usePlaylistID bool) ([]Track, error) {
-	if DBManager == nil {
-		return nil, &ITunesError{Op: "GetPlaylistTracks", Kind: ErrDatabase, Err: errors.New("database not initialized")}
-	}
-
-	dbTracks, err := DBManager.GetPlaylistTracks(playlistIdentifier, usePlaylistID)
+func (c *Client) GetPlaylistTracks(playlistIdentifier string, usePlaylistID bool) ([]Track, error) {
+	dbTracks, err := c.db.GetPlaylistTracks(playlistIdentifier, usePlaylistID)
 	if err != nil {
 		return nil, &ITunesError{Op: "GetPlaylistTracks: get from db", Kind: ErrDatabase, Err: err}
 	}
@@ -906,11 +889,8 @@ func GetPlaylistTracks(playlistIdentifier string, usePlaylistID bool) ([]Track, 
 }
 
 // GetDatabaseStats returns database statistics
-func GetDatabaseStats() (*database.DatabaseStats, error) {
-	if DBManager == nil {
-		return nil, &ITunesError{Op: "GetDatabaseStats", Kind: ErrDatabase, Err: errors.New("database not initialized")}
-	}
-	stats, err := DBManager.GetStats()
+func (c *Client) GetDatabaseStats() (*database.DatabaseStats, error) {
+	stats, err := c.db.GetStats()
 	if err != nil {
 		return nil, &ITunesError{Op: "GetDatabaseStats: get from db", Kind: ErrDatabase, Err: err}
 	}
@@ -918,11 +898,8 @@ func GetDatabaseStats() (*database.DatabaseStats, error) {
 }
 
 // ListPlaylists returns all user playlists from the database
-func ListPlaylists() ([]database.Playlist, error) {
-	if DBManager == nil {
-		return nil, &ITunesError{Op: "ListPlaylists", Kind: ErrDatabase, Err: errors.New("database not initialized")}
-	}
-	playlists, err := DBManager.ListPlaylists()
+func (c *Client) ListPlaylists() ([]database.Playlist, error) {
+	playlists, err := c.db.ListPlaylists()
 	if err != nil {
 		return nil, &ITunesError{Op: "ListPlaylists: get from db", Kind: ErrDatabase, Err: err}
 	}
@@ -930,29 +907,17 @@ func ListPlaylists() ([]database.Playlist, error) {
 }
 
 // SearchTracks is the main search function using database
-func SearchTracks(query string) ([]Track, error) {
-	if DBManager == nil {
-		return nil, &ITunesError{Op: "SearchTracks", Kind: ErrDatabase, Err: errors.New("database not initialized - please run InitDatabase() first")}
-	}
-	return SearchTracksFromDatabase(query, nil)
+func (c *Client) SearchTracks(query string) ([]Track, error) {
+	return c.SearchTracksFromDatabase(query, nil)
 }
 
 // SearchStations searches for radio stations in the database
-func SearchStations(query string) (*StationSearchResult, error) {
-	if DBManager == nil {
-		return &StationSearchResult{
-			Status:  "error",
-			Query:   query,
-			Count:   0,
-			Message: "Database not initialized - please run InitDatabase() first or import stations with 'itunes import-stations stations.json'",
-		}, &ITunesError{Op: "SearchStations", Kind: ErrDatabase, Err: errors.New("database not initialized - please run InitDatabase() first")}
-	}
-
+func (c *Client) SearchStations(query string) (*StationSearchResult, error) {
 	filters := &database.RadioStationFilters{
 		Limit: 15, // Default limit, can be made configurable
 	}
 
-	stations, err := DBManager.SearchRadioStations(query, filters)
+	stations, err := c.db.SearchRadioStations(query, filters)
 	if err != nil {
 		return &StationSearchResult{
 			Status:  "error",
@@ -990,4 +955,33 @@ func SearchStations(query string) (*StationSearchResult, error) {
 	}
 
 	return result, nil
+}
+
+// SearchLimit returns the configured default search limit.
+func (c *Client) SearchLimit() int { return c.searchLimit }
+
+func (c *Client) AddRadioStation(station *database.RadioStation) error {
+	return c.db.AddRadioStation(station)
+}
+
+func (c *Client) GetRadioStationByID(id int64) (*database.RadioStation, error) {
+	return c.db.GetRadioStationByID(id)
+}
+
+func (c *Client) UpdateRadioStation(id int64, station *database.RadioStation) error {
+	return c.db.UpdateRadioStation(id, station)
+}
+
+func (c *Client) DeleteRadioStation(id int64) error { return c.db.DeleteRadioStation(id) }
+
+func (c *Client) ImportRadioStations(stations []database.RadioStation) error {
+	return c.db.ImportRadioStations(stations)
+}
+
+func (c *Client) SearchRadioStations(query string, filters *database.RadioStationFilters) ([]database.RadioStation, error) {
+	return c.db.SearchRadioStations(query, filters)
+}
+
+func (c *Client) MigrateFromJSON(cacheDir string, callback database.ProgressCallback) error {
+	return c.db.MigrateFromJSON(cacheDir, callback)
 }

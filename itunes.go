@@ -16,6 +16,7 @@ import (
 )
 
 var logger *zap.Logger
+var client *itunes.Client
 
 func main() {
 	if len(os.Args) < 2 {
@@ -53,10 +54,11 @@ func main() {
 	command := os.Args[1]
 
 	// Initialize database (now default mode)
-	if err := itunes.InitDatabase(logger); err != nil {
+	client, err = itunes.NewClient(logger)
+	if err != nil {
 		logger.Fatal("Failed to initialize database", zap.Error(err))
 	}
-	defer itunes.CloseDatabase()
+	defer func() { _ = client.Close() }() //nolint:errcheck // process shutdown cleanup
 
 	// Get search limit from environment
 	searchLimit := 15
@@ -75,7 +77,7 @@ func main() {
 		query := os.Args[2]
 
 		// Search using database
-		tracks, err := itunes.SearchTracks(query)
+		tracks, err := client.SearchTracks(query)
 		if err != nil {
 			fmt.Printf("Error searching tracks: %v\n", err)
 			return
@@ -151,7 +153,7 @@ func main() {
 		}
 		query := os.Args[2]
 
-		result, err := itunes.SearchStations(query)
+		result, err := client.SearchStations(query)
 		if err != nil {
 			fmt.Printf("Error searching stations: %v\n", err)
 			return
@@ -346,10 +348,6 @@ func handleAddStation(args []string) error {
 		return fmt.Errorf("invalid URL: %w", err)
 	}
 
-	if itunes.DBManager == nil {
-		return fmt.Errorf("database not initialized")
-	}
-
 	station := &database.RadioStation{
 		Name:        name,
 		URL:         url,
@@ -358,7 +356,7 @@ func handleAddStation(args []string) error {
 		Homepage:    flags["homepage"],
 	}
 
-	return itunes.DBManager.AddRadioStation(station)
+	return client.AddRadioStation(station)
 }
 
 func handleUpdateStation(args []string) error {
@@ -380,12 +378,8 @@ func handleUpdateStation(args []string) error {
 		}
 	}
 
-	if itunes.DBManager == nil {
-		return fmt.Errorf("database not initialized")
-	}
-
 	// Get existing station
-	existingStation, err := itunes.DBManager.GetRadioStationByID(id)
+	existingStation, err := client.GetRadioStationByID(id)
 	if err != nil {
 		return fmt.Errorf("failed to get station: %w", err)
 	}
@@ -410,7 +404,7 @@ func handleUpdateStation(args []string) error {
 		existingStation.Homepage = homepage
 	}
 
-	return itunes.DBManager.UpdateRadioStation(id, existingStation)
+	return client.UpdateRadioStation(id, existingStation)
 }
 
 func handleDeleteStation(idStr string) error {
@@ -419,11 +413,7 @@ func handleDeleteStation(idStr string) error {
 		return fmt.Errorf("invalid station ID: %v", err)
 	}
 
-	if itunes.DBManager == nil {
-		return fmt.Errorf("database not initialized")
-	}
-
-	return itunes.DBManager.DeleteRadioStation(id)
+	return client.DeleteRadioStation(id)
 }
 
 func handleImportStations(filename string) error {
@@ -448,20 +438,12 @@ func handleImportStations(filename string) error {
 		}
 	}
 
-	if itunes.DBManager == nil {
-		return fmt.Errorf("database not initialized")
-	}
-
-	return itunes.DBManager.ImportRadioStations(stations)
+	return client.ImportRadioStations(stations)
 }
 
 func handleExportStations(filename string) error {
-	if itunes.DBManager == nil {
-		return fmt.Errorf("database not initialized")
-	}
-
 	// Get all stations
-	stations, err := itunes.DBManager.SearchRadioStations("", &database.RadioStationFilters{Limit: 1000})
+	stations, err := client.SearchRadioStations("", &database.RadioStationFilters{Limit: 1000})
 	if err != nil {
 		return fmt.Errorf("failed to get stations: %w", err)
 	}
@@ -477,12 +459,8 @@ func handleExportStations(filename string) error {
 }
 
 func handleListStations() error {
-	if itunes.DBManager == nil {
-		return fmt.Errorf("database not initialized")
-	}
-
 	// Get all stations
-	stations, err := itunes.DBManager.SearchRadioStations("", &database.RadioStationFilters{Limit: 100})
+	stations, err := client.SearchRadioStations("", &database.RadioStationFilters{Limit: 100})
 	if err != nil {
 		return fmt.Errorf("failed to get stations: %w", err)
 	}

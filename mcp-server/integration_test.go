@@ -28,7 +28,9 @@ func TestMain(m *testing.M) {
 	database.PrimaryDBPath = testDBPath
 
 	// Initialize database using the iTunes package
-	if err := itunes.InitDatabase(zap.NewNop()); err != nil {
+	var err error
+	client, err = itunes.NewClient(zap.NewNop())
+	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to initialize test database: %v\n", err)
 		os.Exit(1)
 	}
@@ -43,7 +45,7 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 
 	// Cleanup
-	itunes.CloseDatabase()
+	_ = client.Close()
 	os.Remove(testDBPath)
 
 	os.Exit(code)
