@@ -184,8 +184,8 @@ func migrateFromCache() error {
 
 	// Run migration
 	fmt.Println("Starting migration to SQLite database...")
-	if err := dbManager.MigrateFromJSON(*cacheDir, progressReporter(*verbose)); err != nil {
-		return fmt.Errorf("migration failed: %w", err)
+	if migrationErr := dbManager.MigrateFromJSON(*cacheDir, progressReporter(*verbose)); migrationErr != nil {
+		return fmt.Errorf("migration failed: %w", migrationErr)
 	}
 
 	// Validate migration
@@ -240,8 +240,8 @@ func migrateFromScript() error {
 	}
 
 	var enhanced database.RefreshResponse
-	if err := json.Unmarshal(data, &enhanced); err != nil {
-		return fmt.Errorf("failed to parse refresh response: %w", err)
+	if unmarshalErr := json.Unmarshal(data, &enhanced); unmarshalErr != nil {
+		return fmt.Errorf("failed to parse refresh response: %w", unmarshalErr)
 	}
 
 	fmt.Printf("Loaded %d tracks and %d playlists from refresh\n",
@@ -408,9 +408,9 @@ func validateDatabase() error {
 	searchTerms := []string{"love", "blue", "jazz", "rock", "classical"}
 
 	for _, term := range searchTerms {
-		tracks, err := dm.SearchTracksWithFTS(term, &database.SearchFilters{Limit: 5})
-		if err != nil {
-			fmt.Printf("  ✗ Search for '%s' failed: %v\n", term, err)
+		tracks, searchErr := dm.SearchTracksWithFTS(term, &database.SearchFilters{Limit: 5})
+		if searchErr != nil {
+			fmt.Printf("  ✗ Search for '%s' failed: %v\n", term, searchErr)
 		} else {
 			fmt.Printf("  ✓ Search for '%s' returned %d results\n", term, len(tracks))
 			if *verbose && len(tracks) > 0 {

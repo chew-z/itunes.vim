@@ -579,8 +579,8 @@ func (dm *DatabaseManager) BatchInsertTracks(tracks []Track) error {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			dm.Logger.Debug("Failed to roll back transaction", zap.Error(err))
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			dm.Logger.Debug("Failed to roll back transaction", zap.Error(rollbackErr))
 		}
 	}()
 
@@ -704,8 +704,8 @@ func (dm *DatabaseManager) SyncPlaylist(playlistID string, trackPersistentIDs []
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			dm.Logger.Debug("Failed to roll back transaction", zap.Error(err))
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			dm.Logger.Debug("Failed to roll back transaction", zap.Error(rollbackErr))
 		}
 	}()
 
@@ -855,8 +855,8 @@ func (dm *DatabaseManager) BatchInsertPlaylistTracks(playlistID int64, trackIDs 
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			dm.Logger.Debug("Failed to roll back transaction", zap.Error(err))
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			dm.Logger.Debug("Failed to roll back transaction", zap.Error(rollbackErr))
 		}
 	}()
 
@@ -1009,8 +1009,8 @@ func (dm *DatabaseManager) UpdateRadioStation(id int64, station *RadioStation) e
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			dm.Logger.Debug("Failed to roll back transaction", zap.Error(err))
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			dm.Logger.Debug("Failed to roll back transaction", zap.Error(rollbackErr))
 		}
 	}()
 
@@ -1038,9 +1038,9 @@ func (dm *DatabaseManager) UpdateRadioStation(id int64, station *RadioStation) e
 	// Handle genre update
 	if station.Genre != "" {
 		genreName := strings.Title(strings.ToLower(station.Genre))
-		genreID, err := dm.GetOrCreateGenre(genreName)
-		if err != nil {
-			return fmt.Errorf("failed to get or create genre: %w", err)
+		genreID, genreErr := dm.GetOrCreateGenre(genreName)
+		if genreErr != nil {
+			return fmt.Errorf("failed to get or create genre: %w", genreErr)
 		}
 		queryParts = append(queryParts, "genre_id = ?")
 		args = append(args, genreID)
@@ -1163,7 +1163,8 @@ func (dm *DatabaseManager) ImportRadioStations(stations []RadioStation) error {
 			continue
 		}
 		if err := validateStationURL(station.Homepage); err != nil {
-			dm.Logger.Warn("Skipping station with invalid Homepage URL", zap.String("station", station.Name), zap.String("url", station.Homepage), zap.Error(err))
+			dm.Logger.Warn("Skipping station with invalid Homepage URL",
+				zap.String("station", station.Name), zap.String("url", station.Homepage), zap.Error(err))
 			continue
 		}
 

@@ -272,12 +272,12 @@ func SetEQStatus(preset string, enabled *bool) (*EQStatus, error) {
 
 	if audioOutput.OutputType == "airplay" {
 		// Get current EQ status instead of returning an error
-		currentStatus, err := GetEQStatus()
-		if err != nil {
+		currentStatus, statusErr := GetEQStatus()
+		if statusErr != nil {
 			return nil, &ITunesError{
 				Op:   "SetEQStatus: get current EQ status for AirPlay",
 				Kind: ErrAppleMusic,
-				Err:  err,
+				Err:  statusErr,
 				Context: map[string]interface{}{
 					"airplay_device": audioOutput.DeviceName,
 				},
@@ -416,7 +416,8 @@ func PlayPlaylistTrack(playlistName, albumName, trackName, trackID string) error
 		return &ITunesError{Op: "PlayPlaylistTrack: close temp file", Kind: ErrJXAScript, Err: err}
 	}
 
-	args := []string{"-l", "JavaScript", tempFile.Name()}
+	args := make([]string, 0, 7)
+	args = append(args, "-l", "JavaScript", tempFile.Name())
 
 	// Always pass playlist name (empty string if not provided)
 	args = append(args, playlistName)
@@ -507,11 +508,11 @@ func RefreshLibraryCache() error {
 	defer func() { _ = tempFile.Close(); _ = os.Remove(tempFile.Name()) }() //nolint:errcheck // best-effort temp cleanup
 
 	// Write the embedded refresh script to the temp file
-	if _, err := tempFile.WriteString(refreshScript); err != nil {
-		return &ITunesError{Op: "RefreshLibraryCache: write to temp file", Kind: ErrJXAScript, Err: err}
+	if _, writeErr := tempFile.WriteString(refreshScript); writeErr != nil {
+		return &ITunesError{Op: "RefreshLibraryCache: write to temp file", Kind: ErrJXAScript, Err: writeErr}
 	}
-	if err := tempFile.Close(); err != nil {
-		return &ITunesError{Op: "RefreshLibraryCache: close temp file", Kind: ErrJXAScript, Err: err}
+	if closeErr := tempFile.Close(); closeErr != nil {
+		return &ITunesError{Op: "RefreshLibraryCache: close temp file", Kind: ErrJXAScript, Err: closeErr}
 	}
 
 	// Provide user feedback before starting the long-running script
@@ -525,8 +526,8 @@ func RefreshLibraryCache() error {
 	cmd.Stderr = &stderr
 
 	// Start the command
-	if err := cmd.Start(); err != nil {
-		return &ITunesError{Op: "RefreshLibraryCache: start script", Kind: ErrJXAScript, Err: err}
+	if startErr := cmd.Start(); startErr != nil {
+		return &ITunesError{Op: "RefreshLibraryCache: start script", Kind: ErrJXAScript, Err: startErr}
 	}
 
 	// Show progress dots while script is running
@@ -571,8 +572,8 @@ scriptComplete:
 
 	// Parse the structured response using correct database structure
 	var response database.RefreshResponse
-	if err := json.Unmarshal(responseJSON, &response); err != nil {
-		return &ITunesError{Op: "RefreshLibraryCache: unmarshal json", Kind: ErrJXAScript, Err: err}
+	if unmarshalErr := json.Unmarshal(responseJSON, &response); unmarshalErr != nil {
+		return &ITunesError{Op: "RefreshLibraryCache: unmarshal json", Kind: ErrJXAScript, Err: unmarshalErr}
 	}
 
 	if response.Status != "success" {
@@ -654,11 +655,11 @@ func getNowPlayingAttempt() (*NowPlayingStatus, error) {
 	}
 	defer func() { _ = tempFile.Close(); _ = os.Remove(tempFile.Name()) }() //nolint:errcheck // best-effort temp cleanup
 
-	if _, err := tempFile.WriteString(nowPlayingScript); err != nil {
-		return nil, &ITunesError{Op: "GetNowPlaying: write to temp file", Kind: ErrJXAScript, Err: err}
+	if _, writeErr := tempFile.WriteString(nowPlayingScript); writeErr != nil {
+		return nil, &ITunesError{Op: "GetNowPlaying: write to temp file", Kind: ErrJXAScript, Err: writeErr}
 	}
-	if err := tempFile.Close(); err != nil {
-		return nil, &ITunesError{Op: "GetNowPlaying: close temp file", Kind: ErrJXAScript, Err: err}
+	if closeErr := tempFile.Close(); closeErr != nil {
+		return nil, &ITunesError{Op: "GetNowPlaying: close temp file", Kind: ErrJXAScript, Err: closeErr}
 	}
 
 	cmd := exec.CommandContext(ctx, "osascript", "-l", "JavaScript", tempFile.Name())
@@ -782,11 +783,11 @@ func PlayStreamURL(streamURL string) (*PlayResult, error) {
 	}
 	defer func() { _ = tempFile.Close(); _ = os.Remove(tempFile.Name()) }() //nolint:errcheck // best-effort temp cleanup
 
-	if _, err := tempFile.WriteString(playStreamScript); err != nil {
-		return nil, &ITunesError{Op: "PlayStreamURL: write to temp file", Kind: ErrJXAScript, Err: err}
+	if _, writeErr := tempFile.WriteString(playStreamScript); writeErr != nil {
+		return nil, &ITunesError{Op: "PlayStreamURL: write to temp file", Kind: ErrJXAScript, Err: writeErr}
 	}
-	if err := tempFile.Close(); err != nil {
-		return nil, &ITunesError{Op: "PlayStreamURL: close temp file", Kind: ErrJXAScript, Err: err}
+	if closeErr := tempFile.Close(); closeErr != nil {
+		return nil, &ITunesError{Op: "PlayStreamURL: close temp file", Kind: ErrJXAScript, Err: closeErr}
 	}
 
 	cmd := exec.CommandContext(ctx, "osascript", tempFile.Name(), streamURL)

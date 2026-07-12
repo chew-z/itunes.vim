@@ -116,7 +116,7 @@ func (sqb *SearchQueryBuilder) Build() (string, []interface{}, error) {
 	var conditions []string
 	var args []interface{}
 	var scoreColumns []string
-	var orderByColumns []string
+	orderByColumns := make([]string, 0, 3)
 
 	// Base relevance scoring
 	scoreColumns = append(scoreColumns, "0") // Base score

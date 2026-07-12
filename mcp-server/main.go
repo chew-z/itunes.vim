@@ -52,7 +52,9 @@ func main() {
 
 	// Create play tool
 	playTool := mcp.NewTool("play_track",
-		mcp.WithDescription("Plays a track with optional playlist context for continuous playback. Playlist context enables seamless continuation within the playlist. Album parameter helps locate tracks but does not provide playback context."),
+		mcp.WithDescription("Plays a track with optional playlist context for continuous playback. "+
+			"Playlist context enables seamless continuation within the playlist. Album parameter helps locate "+
+			"tracks but does not provide playback context."),
 		mcp.WithString("track_id",
 			mcp.Description("The unique ID of the track from a search result. The most reliable way to play a specific track."),
 		),
@@ -60,7 +62,8 @@ func main() {
 			mcp.Description("The name of the playlist to play. If a track_id is also given, starts playback from that track within the playlist."),
 		),
 		mcp.WithString("album",
-			mcp.Description("The name of the album to help locate tracks. Note: Does not provide album playback context - individual track will play without album continuation."),
+			mcp.Description("The name of the album to help locate tracks. Note: Does not provide album playback "+
+				"context - individual track will play without album continuation."),
 		),
 		mcp.WithString("track",
 			mcp.Description("The name of the track. Use as a fallback if track_id is not known."),
@@ -69,17 +72,21 @@ func main() {
 
 	// Create refresh tool
 	refreshTool := mcp.NewTool("refresh_library",
-		mcp.WithDescription("Refreshes the iTunes library database by extracting current data from Apple Music app and populating SQLite database. Takes 1-3 minutes for large libraries. Use only when library has changed significantly. Note: This tool takes no parameters, call with empty arguments {}."),
+		mcp.WithDescription("Refreshes the iTunes library database by extracting current data from Apple Music app "+
+			"and populating SQLite database. Takes 1-3 minutes for large libraries. Use only when library "+
+			"has changed significantly. Note: This tool takes no parameters, call with empty arguments {}."),
 	)
 
 	// Create now playing tool
 	nowPlayingTool := mcp.NewTool("now_playing",
-		mcp.WithDescription("Gets the current playback status and track information from Apple Music. Note: This tool takes no parameters, call with empty arguments {}."),
+		mcp.WithDescription("Gets the current playback status and track information from Apple Music. Note: "+
+			"This tool takes no parameters, call with empty arguments {}."),
 	)
 
 	// Create list playlists tool
 	listPlaylistsTool := mcp.NewTool("list_playlists",
-		mcp.WithDescription("Lists all user playlists in the iTunes/Apple Music library with metadata. Note: This tool takes no parameters, call with empty arguments {}."),
+		mcp.WithDescription("Lists all user playlists in the iTunes/Apple Music library with metadata. Note: "+
+			"This tool takes no parameters, call with empty arguments {}."),
 	)
 
 	// Create get playlist tracks tool
@@ -150,7 +157,8 @@ func main() {
 
 	// Create EQ check tool
 	checkEQTool := mcp.NewTool("check_eq",
-		mcp.WithDescription("Check the current Apple Music Equalizer (EQ) status, including the active preset and a list of all available presets. Note: This tool takes no parameters, call with empty arguments {}."),
+		mcp.WithDescription("Check the current Apple Music Equalizer (EQ) status, including the active preset "+
+			"and a list of all available presets. Note: This tool takes no parameters, call with empty arguments {}."),
 	)
 
 	// Create EQ set tool
@@ -166,11 +174,13 @@ func main() {
 
 	// Create AirPlay tools
 	getOutputDeviceTool := mcp.NewTool("get_output_device",
-		mcp.WithDescription("Gets the current audio output device (e.g., local speakers or an AirPlay device). Note: This tool takes no parameters, call with empty arguments {}."),
+		mcp.WithDescription("Gets the current audio output device (e.g., local speakers or an AirPlay device). "+
+			"Note: This tool takes no parameters, call with empty arguments {}."),
 	)
 
 	listOutputDevicesTool := mcp.NewTool("list_output_devices",
-		mcp.WithDescription("Lists all available audio output devices, including local speakers and AirPlay devices. Note: This tool takes no parameters, call with empty arguments {}."),
+		mcp.WithDescription("Lists all available audio output devices, including local speakers and AirPlay "+
+			"devices. Note: This tool takes no parameters, call with empty arguments {}."),
 	)
 
 	setOutputDeviceTool := mcp.NewTool("set_output_device",
@@ -314,7 +324,12 @@ func refreshHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.Call
 		return mcp.NewToolResultText("Library refresh and database update completed, but couldn't get statistics."), nil
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf("Library refresh completed successfully!\n\n📊 **Database Statistics:**\n• **%d tracks** stored in SQLite database\n• **%d playlists** indexed\n• **%d artists** cataloged\n• **%d albums** identified\n• Database size: %.2f MB\n\n✅ You can now search for music with ultra-fast database queries (limit: %d tracks per search).",
+	return mcp.NewToolResultText(fmt.Sprintf(
+		"Library refresh completed successfully!\n\n📊 **Database Statistics:**\n"+
+			"• **%d tracks** stored in SQLite database\n• **%d playlists** indexed\n"+
+			"• **%d artists** cataloged\n• **%d albums** identified\n"+
+			"• Database size: %.2f MB\n\n✅ You can now search for music with ultra-fast "+
+			"database queries (limit: %d tracks per search).",
 		stats.TrackCount,
 		stats.PlaylistCount,
 		stats.ArtistCount,
@@ -483,8 +498,8 @@ func playStreamHandler(ctx context.Context, request mcp.CallToolRequest) (*mcp.C
 		return mcp.NewToolResultError("Failed to marshal arguments: " + err.Error()), nil
 	}
 
-	if err := json.Unmarshal(argBytes, &params); err != nil {
-		return mcp.NewToolResultError("Invalid arguments: " + err.Error()), nil
+	if unmarshalErr := json.Unmarshal(argBytes, &params); unmarshalErr != nil {
+		return mcp.NewToolResultError("Invalid arguments: " + unmarshalErr.Error()), nil
 	}
 
 	if params.URL == "" {
@@ -516,8 +531,8 @@ func searchStationsHandler(ctx context.Context, request mcp.CallToolRequest) (*m
 		return mcp.NewToolResultError("Failed to marshal arguments: " + err.Error()), nil
 	}
 
-	if err := json.Unmarshal(argBytes, &params); err != nil {
-		return mcp.NewToolResultError("Invalid arguments: " + err.Error()), nil
+	if unmarshalErr := json.Unmarshal(argBytes, &params); unmarshalErr != nil {
+		return mcp.NewToolResultError("Invalid arguments: " + unmarshalErr.Error()), nil
 	}
 
 	if params.Query == "" {

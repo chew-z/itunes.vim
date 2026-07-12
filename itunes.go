@@ -246,7 +246,8 @@ func main() {
 
 	default:
 		fmt.Println("Unknown command:", command)
-		fmt.Println("Available commands: search, play, now-playing, status, search-stations, add-station, update-station, delete-station, import-stations, export-stations, list-stations")
+		fmt.Println("Available commands: search, play, now-playing, status, search-stations, add-station, " +
+			"update-station, delete-station, import-stations, export-stations, list-stations")
 	}
 }
 

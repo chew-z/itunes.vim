@@ -339,8 +339,8 @@ func (dm *DatabaseManager) insertTrackTx(tx *sql.Tx, track *JSONTrack, artistStm
 	if track.Artist == "" {
 		track.Artist = "Unknown Artist"
 	}
-	if _, err := artistStmt.Exec(track.Artist); err != nil {
-		return 0, fmt.Errorf("failed to insert artist: %w", err)
+	if _, artistErr := artistStmt.Exec(track.Artist); artistErr != nil {
+		return 0, fmt.Errorf("failed to insert artist: %w", artistErr)
 	}
 
 	var artistID int64
@@ -353,8 +353,8 @@ func (dm *DatabaseManager) insertTrackTx(tx *sql.Tx, track *JSONTrack, artistStm
 	if track.Genre == "" {
 		track.Genre = "Unknown"
 	}
-	if _, err := genreStmt.Exec(track.Genre); err != nil {
-		return 0, fmt.Errorf("failed to insert genre: %w", err)
+	if _, genreErr := genreStmt.Exec(track.Genre); genreErr != nil {
+		return 0, fmt.Errorf("failed to insert genre: %w", genreErr)
 	}
 
 	var genreID int64
@@ -372,9 +372,9 @@ func (dm *DatabaseManager) insertTrackTx(tx *sql.Tx, track *JSONTrack, artistStm
 	err = tx.QueryRow("SELECT id FROM albums WHERE name = ? AND artist_id = ?", track.Album, artistID).Scan(&albumID)
 	if err == sql.ErrNoRows {
 		// Create album
-		result, err := tx.Exec("INSERT INTO albums (name, artist_id, genre_id) VALUES (?, ?, ?)", track.Album, artistID, genreID)
-		if err != nil {
-			return 0, fmt.Errorf("failed to insert album: %w", err)
+		result, insertErr := tx.Exec("INSERT INTO albums (name, artist_id, genre_id) VALUES (?, ?, ?)", track.Album, artistID, genreID)
+		if insertErr != nil {
+			return 0, fmt.Errorf("failed to insert album: %w", insertErr)
 		}
 		albumID, err = result.LastInsertId()
 		if err != nil {
@@ -410,9 +410,9 @@ func (dm *DatabaseManager) updateTrackTx(tx *sql.Tx, trackID int64, track *JSONT
 	var artistID int64
 	err := tx.QueryRow("SELECT id FROM artists WHERE name = ?", track.Artist).Scan(&artistID)
 	if err == sql.ErrNoRows {
-		result, err := tx.Exec("INSERT INTO artists (name) VALUES (?)", track.Artist)
-		if err != nil {
-			return 0, fmt.Errorf("failed to insert artist: %w", err)
+		result, insertErr := tx.Exec("INSERT INTO artists (name) VALUES (?)", track.Artist)
+		if insertErr != nil {
+			return 0, fmt.Errorf("failed to insert artist: %w", insertErr)
 		}
 		artistID, err = result.LastInsertId()
 		if err != nil {
@@ -430,9 +430,9 @@ func (dm *DatabaseManager) updateTrackTx(tx *sql.Tx, trackID int64, track *JSONT
 	var genreID int64
 	err = tx.QueryRow("SELECT id FROM genres WHERE name = ?", track.Genre).Scan(&genreID)
 	if err == sql.ErrNoRows {
-		result, err := tx.Exec("INSERT INTO genres (name) VALUES (?)", track.Genre)
-		if err != nil {
-			return 0, fmt.Errorf("failed to insert genre: %w", err)
+		result, insertErr := tx.Exec("INSERT INTO genres (name) VALUES (?)", track.Genre)
+		if insertErr != nil {
+			return 0, fmt.Errorf("failed to insert genre: %w", insertErr)
 		}
 		genreID, err = result.LastInsertId()
 		if err != nil {
@@ -450,9 +450,9 @@ func (dm *DatabaseManager) updateTrackTx(tx *sql.Tx, trackID int64, track *JSONT
 	var albumID int64
 	err = tx.QueryRow("SELECT id FROM albums WHERE name = ? AND artist_id = ?", track.Album, artistID).Scan(&albumID)
 	if err == sql.ErrNoRows {
-		result, err := tx.Exec("INSERT INTO albums (name, artist_id, genre_id) VALUES (?, ?, ?)", track.Album, artistID, genreID)
-		if err != nil {
-			return 0, fmt.Errorf("failed to insert album: %w", err)
+		result, insertErr := tx.Exec("INSERT INTO albums (name, artist_id, genre_id) VALUES (?, ?, ?)", track.Album, artistID, genreID)
+		if insertErr != nil {
+			return 0, fmt.Errorf("failed to insert album: %w", insertErr)
 		}
 		albumID, err = result.LastInsertId()
 		if err != nil {
@@ -491,11 +491,11 @@ func (dm *DatabaseManager) insertPlaylistTracksTx(tx *sql.Tx, trackID int64, pla
 			if err == sql.ErrNoRows {
 				// Create playlist if it doesn't exist (should rarely happen now)
 				dm.Logger.Info("Creating untracked playlist", zap.String("playlist", playlistName))
-				result, err := tx.Exec("INSERT INTO playlists (persistent_id, name, special_kind) VALUES (?, ?, ?)",
+				result, insertErr := tx.Exec("INSERT INTO playlists (persistent_id, name, special_kind) VALUES (?, ?, ?)",
 					fmt.Sprintf("UNTRACKED_%s", strings.ReplaceAll(playlistName, " ", "_")),
 					playlistName, "none")
-				if err != nil {
-					dm.Logger.Error("Failed to create playlist", zap.String("playlist", playlistName), zap.Error(err))
+				if insertErr != nil {
+					dm.Logger.Error("Failed to create playlist", zap.String("playlist", playlistName), zap.Error(insertErr))
 					continue
 				}
 				playlistID, err = result.LastInsertId()
@@ -569,8 +569,8 @@ func (dm *DatabaseManager) BatchUpdateTracks(tracks []JSONTrack) error {
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
-		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
-			dm.Logger.Debug("Failed to roll back transaction", zap.Error(err))
+		if rollbackErr := tx.Rollback(); rollbackErr != nil && !errors.Is(rollbackErr, sql.ErrTxDone) {
+			dm.Logger.Debug("Failed to roll back transaction", zap.Error(rollbackErr))
 		}
 	}()
 
@@ -597,13 +597,13 @@ func (dm *DatabaseManager) BatchUpdateTracks(tracks []JSONTrack) error {
 		err := tx.QueryRow("SELECT id FROM tracks WHERE persistent_id = ?", persistentID).Scan(&trackID)
 		if err == nil {
 			// Update existing track
-			if _, err := dm.updateTrackTx(tx, trackID, &track); err != nil {
-				dm.Logger.Error("Error updating track", zap.String("track", track.Name), zap.Error(err))
+			if _, updateErr := dm.updateTrackTx(tx, trackID, &track); updateErr != nil {
+				dm.Logger.Error("Error updating track", zap.String("track", track.Name), zap.Error(updateErr))
 			}
 		} else if err == sql.ErrNoRows {
 			// Insert new track
-			if _, err := dm.insertTrackTx(tx, &track, artistStmt, genreStmt); err != nil {
-				dm.Logger.Error("Error inserting track", zap.String("track", track.Name), zap.Error(err))
+			if _, insertErr := dm.insertTrackTx(tx, &track, artistStmt, genreStmt); insertErr != nil {
+				dm.Logger.Error("Error inserting track", zap.String("track", track.Name), zap.Error(insertErr))
 			}
 		} else {
 			dm.Logger.Error("Error checking track", zap.String("track", track.Name), zap.Error(err))
@@ -668,7 +668,9 @@ func (dm *DatabaseManager) ValidateMigration(cacheDir string) (bool, []string) {
 		return false, issues
 	}
 
-	dm.Logger.Info("Migration validation successful", zap.Int64("tracks", stats.TrackCount), zap.Int64("playlists", stats.PlaylistCount), zap.Int64("artists", stats.ArtistCount), zap.Int64("albums", stats.AlbumCount))
+	dm.Logger.Info("Migration validation successful",
+		zap.Int64("tracks", stats.TrackCount), zap.Int64("playlists", stats.PlaylistCount),
+		zap.Int64("artists", stats.ArtistCount), zap.Int64("albums", stats.AlbumCount))
 
 	if len(tracks) > 0 {
 		dm.Logger.Info("Sample search returned", zap.String("track", tracks[0].Name), zap.String("artist", tracks[0].Artist))
