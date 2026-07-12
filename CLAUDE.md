@@ -3,6 +3,8 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 @/Users/rrj/Projekty/CodeAssist/Prompts/GOLANG.md
+@/Users/rrj/Projekty/CodeAssist/Prompts/GODOC.md
+@/Users/rrj/Projekty/CodeAssist/Prompts/LSP.md
 
 ## Build Commands
 

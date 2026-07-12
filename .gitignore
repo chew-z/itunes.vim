@@ -9,20 +9,16 @@ bin/**
 test_*
 
 AGENTS.md
+CODANNA.md
 GOLANG.md
 GODOC.md
-CODANNA.md
+LSP.md
 
-reports/**
-.repomix/
-repomix.config.json
-repomix-output.xml
+reports/
 
-.aider*
-.claude/**
-.codex/**
-.gemini/**
-.vscode/**
+.claude/
+.codex/
+.qoder/
 
 .mcp.json
 
