@@ -68,189 +68,190 @@ func main() {
 		}
 	}
 
-	switch command {
-	case "search":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: itunes search <query>")
-			return
-		}
-		query := os.Args[2]
+	dispatchCommand(context.Background(), command, os.Args[2:], searchLimit)
+}
 
-		// Search using database
-		tracks, err := client.SearchTracks(context.Background(), query)
-		if err != nil {
-			fmt.Printf("Error searching tracks: %v\n", err)
-			return
-		}
+func dispatchCommand(ctx context.Context, command string, args []string, searchLimit int) {
+	handlers := commandHandlers(ctx, args, searchLimit)
+	if handler, ok := handlers[command]; ok {
+		handler()
+		return
+	}
+	printUnknownCommand(command)
+}
 
-		if len(tracks) == 0 {
-			fmt.Println("No tracks found")
-			return
-		}
+func commandHandlers(ctx context.Context, args []string, searchLimit int) map[string]func() {
+	return map[string]func(){
+		"search":          func() { handleSearch(ctx, args, searchLimit) },
+		"play":            func() { handlePlay(ctx, args) },
+		"now-playing":     func() { handleNowPlaying(ctx) },
+		"status":          func() { handleNowPlaying(ctx) },
+		"search-stations": func() { handleSearchStations(ctx, args) },
+		"add-station": func() {
+			handleStationAction(args, handleAddStation, "Error adding station", "Radio station added successfully!")
+		},
+		"update-station": func() { handleUpdateStationCommand(args) },
+		"delete-station": func() {
+			handleSingleArgumentAction(args, "Usage: itunes delete-station <id>", handleDeleteStation,
+				"Error deleting station", "Radio station deleted successfully!")
+		},
+		"import-stations": func() {
+			handleSingleArgumentAction(args, "Usage: itunes import-stations <file>", handleImportStations,
+				"Error importing stations", "Radio stations imported successfully!")
+		},
+		"export-stations": func() {
+			handleSingleArgumentAction(args, "Usage: itunes export-stations <file>", handleExportStations,
+				"Error exporting stations", "Radio stations exported successfully!")
+		},
+		"list-stations": func() { handleListStationsCommand() },
+	}
+}
 
-		// Display results
-		fmt.Printf("Found %d tracks (limit: %d):\n", len(tracks), searchLimit)
-		for _, t := range tracks {
-			fmt.Printf("%s by %s [%s] (ID: %s)\n", t.Name, t.Artist, t.Collection, t.ID)
-		}
+func printUnknownCommand(command string) {
+	fmt.Println("Unknown command:", command)
+	fmt.Println("Available commands: search, play, now-playing, status, search-stations, add-station, " +
+		"update-station, delete-station, import-stations, export-stations, list-stations")
+}
 
-	case "play":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: itunes play <playlist> [album] [track] [trackID]")
-			fmt.Println("  playlist: playlist name (use empty string \"\" if not applicable)")
-			fmt.Println("  album: album name for album context (optional)")
-			fmt.Println("  track: track name (optional)")
-			fmt.Println("  trackID: track ID from search results (recommended, most reliable)")
-			return
-		}
+func handleSearch(ctx context.Context, args []string, searchLimit int) {
+	if len(args) < 1 {
+		fmt.Println("Usage: itunes search <query>")
+		return
+	}
+	tracks, err := client.SearchTracks(ctx, args[0])
+	if err != nil {
+		fmt.Printf("Error searching tracks: %v\n", err)
+		return
+	}
+	if len(tracks) == 0 {
+		fmt.Println("No tracks found")
+		return
+	}
+	fmt.Printf("Found %d tracks (limit: %d):\n", len(tracks), searchLimit)
+	for _, track := range tracks {
+		fmt.Printf("%s by %s [%s] (ID: %s)\n", track.Name, track.Artist, track.Collection, track.ID)
+	}
+}
 
-		// Parse arguments with support for empty strings
-		playlist := os.Args[2]
-		var album, track, trackID string
+func handlePlay(ctx context.Context, args []string) {
+	if len(args) < 1 {
+		printPlayUsage()
+		return
+	}
+	playlist := args[0]
+	var album, track, trackID string
+	if len(args) > 1 {
+		album = args[1]
+	}
+	if len(args) > 2 {
+		track = args[2]
+	}
+	if len(args) > 3 {
+		trackID = args[3]
+	}
+	if err := itunes.PlayPlaylistTrack(ctx, playlist, album, track, trackID); err != nil {
+		fmt.Println("Play failed:", err)
+	} else {
+		fmt.Println("Playback started.")
+	}
+}
 
-		if len(os.Args) > 3 {
-			album = os.Args[3]
-		}
-		if len(os.Args) > 4 {
-			track = os.Args[4]
-		}
-		if len(os.Args) > 5 {
-			trackID = os.Args[5]
-		}
+func printPlayUsage() {
+	fmt.Println("Usage: itunes play <playlist> [album] [track] [trackID]")
+	fmt.Println("  playlist: playlist name (use empty string \"\" if not applicable)")
+	fmt.Println("  album: album name for album context (optional)")
+	fmt.Println("  track: track name (optional)")
+	fmt.Println("  trackID: track ID from search results (recommended, most reliable)")
+}
 
-		if err := itunes.PlayPlaylistTrack(context.Background(), playlist, album, track, trackID); err != nil {
-			fmt.Println("Play failed:", err)
-		} else {
-			fmt.Println("Playback started.")
+func handleNowPlaying(ctx context.Context) {
+	status, err := itunes.GetNowPlaying(ctx)
+	if err != nil {
+		fmt.Println("Failed to get current status:", err)
+		return
+	}
+	fmt.Printf("Status: %s\n", status.Status)
+	if status.Status == "playing" && status.Track != nil {
+		fmt.Printf("Track: %s\n", status.Display)
+		fmt.Printf("Album: %s\n", status.Track.Album)
+		fmt.Printf("Position: %s / %s\n", status.Track.Position, status.Track.Duration)
+		if status.Track.ID != "" {
+			fmt.Printf("Track ID: %s\n", status.Track.ID)
 		}
+	} else if status.Message != "" {
+		fmt.Printf("Message: %s\n", status.Message)
+	}
+}
 
-	case "now-playing", "status":
-		status, err := itunes.GetNowPlaying(context.Background())
-		if err != nil {
-			fmt.Println("Failed to get current status:", err)
-			return
+func handleSearchStations(ctx context.Context, args []string) {
+	if len(args) < 1 {
+		fmt.Println("Usage: itunes search-stations <query>")
+		return
+	}
+	query := args[0]
+	result, err := client.SearchStations(ctx, query)
+	if err != nil {
+		fmt.Printf("Error searching stations: %v\n", err)
+		return
+	}
+	if result.Count == 0 {
+		fmt.Printf("No radio stations found for query: %s\n", query)
+		if result.Message != "" {
+			fmt.Printf("Hint: %s\n", result.Message)
 		}
+		return
+	}
+	fmt.Printf("Found %d radio station(s) for '%s':\n\n", result.Count, query)
+	for _, station := range result.Stations {
+		printStationSearchResult(station)
+	}
+}
 
-		if status.Status == "playing" && status.Track != nil {
-			fmt.Printf("Status: %s\n", status.Status)
-			fmt.Printf("Track: %s\n", status.Display)
-			fmt.Printf("Album: %s\n", status.Track.Album)
-			fmt.Printf("Position: %s / %s\n", status.Track.Position, status.Track.Duration)
-			if status.Track.ID != "" {
-				fmt.Printf("Track ID: %s\n", status.Track.ID)
-			}
-		} else {
-			fmt.Printf("Status: %s\n", status.Status)
-			if status.Message != "" {
-				fmt.Printf("Message: %s\n", status.Message)
-			}
-		}
+func printStationSearchResult(station itunes.Station) {
+	fmt.Printf("ID: %d\nName: %s\nURL: %s\n", station.ID, station.Name, station.URL)
+	if station.Description != "" {
+		fmt.Printf("Description: %s\n", station.Description)
+	}
+	if station.Genre != "" {
+		fmt.Printf("Genre: %s\n", station.Genre)
+	}
+	if station.Homepage != "" {
+		fmt.Printf("Homepage: %s\n", station.Homepage)
+	}
+	fmt.Println("---")
+}
 
-	case "search-stations":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: itunes search-stations <query>")
-			return
-		}
-		query := os.Args[2]
+func handleStationAction(args []string, action func([]string) error, errorPrefix, success string) {
+	if err := action(args); err != nil {
+		fmt.Printf("%s: %v\n", errorPrefix, err)
+		return
+	}
+	fmt.Println(success)
+}
 
-		result, err := client.SearchStations(context.Background(), query)
-		if err != nil {
-			fmt.Printf("Error searching stations: %v\n", err)
-			return
-		}
+func handleUpdateStationCommand(args []string) {
+	if len(args) < 1 {
+		fmt.Println("Usage: itunes update-station <id> [options]")
+		return
+	}
+	handleStationAction(args, handleUpdateStation, "Error updating station", "Radio station updated successfully!")
+}
 
-		if result.Count == 0 {
-			fmt.Printf("No radio stations found for query: %s\n", query)
-			if result.Message != "" {
-				fmt.Printf("Hint: %s\n", result.Message)
-			}
-			return
-		}
+func handleSingleArgumentAction(args []string, usage string, action func(string) error, errorPrefix, success string) {
+	if len(args) < 1 {
+		fmt.Println(usage)
+		return
+	}
+	if err := action(args[0]); err != nil {
+		fmt.Printf("%s: %v\n", errorPrefix, err)
+		return
+	}
+	fmt.Println(success)
+}
 
-		fmt.Printf("Found %d radio station(s) for '%s':\n\n", result.Count, query)
-		for _, station := range result.Stations {
-			fmt.Printf("ID: %d\n", station.ID)
-			fmt.Printf("Name: %s\n", station.Name)
-			fmt.Printf("URL: %s\n", station.URL)
-			if station.Description != "" {
-				fmt.Printf("Description: %s\n", station.Description)
-			}
-			if station.Genre != "" {
-				fmt.Printf("Genre: %s\n", station.Genre)
-			}
-			if station.Homepage != "" {
-				fmt.Printf("Homepage: %s\n", station.Homepage)
-			}
-			fmt.Println("---")
-		}
-
-	case "add-station":
-		err := handleAddStation(os.Args[2:])
-		if err != nil {
-			fmt.Printf("Error adding station: %v\n", err)
-			return
-		}
-		fmt.Println("Radio station added successfully!")
-
-	case "update-station":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: itunes update-station <id> [options]")
-			return
-		}
-		err := handleUpdateStation(os.Args[2:])
-		if err != nil {
-			fmt.Printf("Error updating station: %v\n", err)
-			return
-		}
-		fmt.Println("Radio station updated successfully!")
-
-	case "delete-station":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: itunes delete-station <id>")
-			return
-		}
-		err := handleDeleteStation(os.Args[2])
-		if err != nil {
-			fmt.Printf("Error deleting station: %v\n", err)
-			return
-		}
-		fmt.Println("Radio station deleted successfully!")
-
-	case "import-stations":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: itunes import-stations <file>")
-			return
-		}
-		err := handleImportStations(os.Args[2])
-		if err != nil {
-			fmt.Printf("Error importing stations: %v\n", err)
-			return
-		}
-		fmt.Println("Radio stations imported successfully!")
-
-	case "export-stations":
-		if len(os.Args) < 3 {
-			fmt.Println("Usage: itunes export-stations <file>")
-			return
-		}
-		err := handleExportStations(os.Args[2])
-		if err != nil {
-			fmt.Printf("Error exporting stations: %v\n", err)
-			return
-		}
-		fmt.Println("Radio stations exported successfully!")
-
-	case "list-stations":
-		err := handleListStations()
-		if err != nil {
-			fmt.Printf("Error listing stations: %v\n", err)
-			return
-		}
-
-	default:
-		fmt.Println("Unknown command:", command)
-		fmt.Println("Available commands: search, play, now-playing, status, search-stations, add-station, " +
-			"update-station, delete-station, import-stations, export-stations, list-stations")
+func handleListStationsCommand() {
+	if err := handleListStations(); err != nil {
+		fmt.Printf("Error listing stations: %v\n", err)
 	}
 }
 
@@ -258,24 +259,21 @@ func main() {
 func parseFlags(args []string) map[string]string {
 	flags := make(map[string]string)
 	for i := 0; i < len(args); i++ {
-		if args[i] == "--name" && i+1 < len(args) {
-			flags["name"] = args[i+1]
-			i++
-		} else if args[i] == "--url" && i+1 < len(args) {
-			flags["url"] = args[i+1]
-			i++
-		} else if args[i] == "--description" && i+1 < len(args) {
-			flags["description"] = args[i+1]
-			i++
-		} else if args[i] == "--genre" && i+1 < len(args) {
-			flags["genre"] = args[i+1]
-			i++
-		} else if args[i] == "--homepage" && i+1 < len(args) {
-			flags["homepage"] = args[i+1]
-			i++
+		if i+1 >= len(args) || !isStationFlag(args[i]) {
+			continue
 		}
+		flags[strings.TrimPrefix(args[i], "--")] = args[i+1]
+		i++
 	}
 	return flags
+}
+
+func isStationFlag(argument string) bool {
+	switch argument {
+	case "--name", "--url", "--description", "--genre", "--homepage":
+		return true
+	}
+	return false
 }
 
 // validateStationURL validates that a station URL uses the correct format for Apple Music
@@ -384,27 +382,33 @@ func handleUpdateStation(args []string) error {
 		return fmt.Errorf("failed to get station: %w", err)
 	}
 
-	// Update fields if provided
-	if name, ok := flags["name"]; ok {
-		existingStation.Name = name
+	if err := applyStationUpdates(existingStation, flags); err != nil {
+		return err
 	}
+
+	return client.UpdateRadioStation(context.Background(), id, existingStation)
+}
+
+func applyStationUpdates(station *database.RadioStation, flags map[string]string) error {
 	if url, ok := flags["url"]; ok {
 		if err := validateStationURL(url); err != nil {
 			return fmt.Errorf("invalid URL: %w", err)
 		}
-		existingStation.URL = url
+		station.URL = url
+	}
+	if name, ok := flags["name"]; ok {
+		station.Name = name
 	}
 	if description, ok := flags["description"]; ok {
-		existingStation.Description = description
+		station.Description = description
 	}
 	if genre, ok := flags["genre"]; ok {
-		existingStation.Genre = genre
+		station.Genre = genre
 	}
 	if homepage, ok := flags["homepage"]; ok {
-		existingStation.Homepage = homepage
+		station.Homepage = homepage
 	}
-
-	return client.UpdateRadioStation(context.Background(), id, existingStation)
+	return nil
 }
 
 func handleDeleteStation(idStr string) error {
