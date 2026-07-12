@@ -5,9 +5,6 @@ bin/**
 
 .env
 
-*_test.go
-test_*
-
 AGENTS.md
 CODANNA.md
 GOLANG.md
