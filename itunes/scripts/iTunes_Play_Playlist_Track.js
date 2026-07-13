@@ -99,12 +99,11 @@ function run(argv) {
                         console.log("Found track in playlist: " + foundTrack.name());
                     }
                     try {
-                        // Improved playback sequence with proper timing and context setting
-                        music.mute = true;
-                        
-                        // Ensure shuffle is off for predictable playback
-                        music.shuffleEnabled = false;
-                        
+                        // Mute/shuffle are cosmetic; setting them can fail on some
+                        // Music versions/output devices and must never abort playback.
+                        try { music.mute = true; } catch (e) { /* best-effort */ }
+                        try { music.shuffleEnabled = false; } catch (e) { /* best-effort */ }
+
                         // Set playlist context first
                         playlist.reveal();
                         
@@ -116,11 +115,11 @@ function run(argv) {
                         
                         // Small delay before unmuting to ensure playback started
                         $.NSThread.sleepForTimeInterval(0.2);
-                        music.mute = false;
-                        
+                        try { music.mute = false; } catch (e) { /* best-effort */ }
+
                         return "OK: Started playing track '" + foundTrack.name() + "' from playlist '" + playlistName + "'";
                     } catch (playError) {
-                        music.mute = false; // Ensure we don't leave music muted
+                        try { music.mute = false; } catch (e) { /* best-effort */ }
                         return "ERROR: Failed to play track '" + foundTrack.name() + "' from playlist '" + playlistName + "': " + playError.message;
                     }
                 } else {
@@ -177,10 +176,10 @@ function run(argv) {
                         console.log("Found " + albumTracks.length + " tracks in album, playing: " + targetTrack.name());
                     }
                     try {
-                        // Improved album playback sequence
-                        music.mute = true;
-                        music.shuffleEnabled = false; // Disable shuffle for predictable album playback
-                        
+                        // Mute/shuffle are cosmetic; failures must never abort playback.
+                        try { music.mute = true; } catch (e) { /* best-effort */ }
+                        try { music.shuffleEnabled = false; } catch (e) { /* best-effort */ }
+
                         // Reveal the target track to set album context
                         targetTrack.reveal();
                         
@@ -192,11 +191,11 @@ function run(argv) {
                         
                         // Small delay before unmuting to ensure playback started
                         $.NSThread.sleepForTimeInterval(0.2);
-                        music.mute = false;
-                        
+                        try { music.mute = false; } catch (e) { /* best-effort */ }
+
                         return "OK: Started playing track '" + targetTrack.name() + "' from album '" + albumName + "'";
                     } catch (playError) {
-                        music.mute = false; // Ensure we don't leave music muted
+                        try { music.mute = false; } catch (e) { /* best-effort */ }
                         return "ERROR: Failed to play track '" + targetTrack.name() + "' from album '" + albumName + "': " + playError.message;
                     }
                 } else {

@@ -135,11 +135,21 @@ function! s:play_selection(line) abort
   endif
 
   let l:track = s:track_list[l:idx]
-  let l:collection = get(l:track, 'collection', '')
   let l:track_name = get(l:track, 'name', '')
   let l:id = get(l:track, 'persistent_id', get(l:track, 'id', ''))
 
-  let l:cmd = l:bin . ' play ' . s:shellescape(l:collection) . ' "" ' . s:shellescape(l:track_name) . ' ' . s:shellescape(l:id)
+  " Playlist context must be a real playlist — 'collection' is usually the
+  " album name, which the CLI would reject as an unknown playlist.
+  let l:playlists = get(l:track, 'playlists', [])
+  let l:playlist = ''
+  let l:album = ''
+  if type(l:playlists) == v:t_list && !empty(l:playlists)
+    let l:playlist = l:playlists[0]
+  else
+    let l:album = get(l:track, 'album', '')
+  endif
+
+  let l:cmd = l:bin . ' play ' . s:shellescape(l:playlist) . ' ' . s:shellescape(l:album) . ' ' . s:shellescape(l:track_name) . ' ' . s:shellescape(l:id)
   let l:output = system(l:cmd)
   if v:shell_error
     echohl ErrorMsg
