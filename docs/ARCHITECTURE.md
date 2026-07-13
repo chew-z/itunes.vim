@@ -39,6 +39,11 @@ one core library. This document describes how the pieces fit together; see
 Supporting packages: `itunes/` (core library), `database/` (SQLite layer),
 `logging/` (zap logger setup).
 
+A fourth entry point lives outside the Go module: the **Vim plugin**
+(`vim-plugin/`) shells out to `bin/itunes` (`search --json`, `play`,
+`now-playing`) and presents results through fzf — it has no direct access to
+the database or JXA layer. See [VIM-PLUGIN.md](VIM-PLUGIN.md).
+
 ## The two data paths
 
 **Search path — database only.** Queries never touch the Apple Music app. They

@@ -12,6 +12,9 @@ how the system works inside.
 - **[JXA-AUTOMATION.md](JXA-AUTOMATION.md)** — how embedded JXA scripts are
   executed, the script inventory, the bulk-fetch rule (read before writing any
   JXA), and macOS platform limitations.
+- **[VIM-PLUGIN.md](VIM-PLUGIN.md)** — the Vim/Neovim frontend in
+  `vim-plugin/`: how it shells out to the CLI, fzf integration design, and
+  the CLI contract it depends on.
 
 `CLAUDE.md` at the repo root is AI-assistant guidance and duplicates some of
 this on purpose; when they disagree, these docs plus the code are canonical.

@@ -35,11 +35,12 @@ Go-based iTunes/Apple Music control tool with CLI, MCP server, and SQLite databa
 
 ### Architecture
 
-- **CLI** (`itunes.go`): Command-line interface
+- **CLI** (`itunes.go`): Command-line interface (`search --json` for machine-readable output)
 - **MCP Server** (`mcp-server/main.go`): LLM integration via Model Context Protocol
 - **Core Library** (`itunes/itunes.go`): iTunes integration functions
 - **Database** (`database/`): SQLite with FTS5 search (<7ms queries)
 - **JXA Scripts** (`itunes/scripts/`): Apple Music automation via JavaScript
+- **Vim Plugin** (`vim-plugin/`): fzf frontend shelling out to the CLI — see `docs/VIM-PLUGIN.md`; install with vim-plug `{ 'branch': 'main', 'rtp': 'vim-plugin' }`, never by symlinking into `~/.vim/plugged`
 
 ### Data Flow
 

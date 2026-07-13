@@ -20,10 +20,11 @@ A Go-based tool that bridges command-line interfaces and AI applications with yo
 - **Database-First**: Normalized SQLite schema keyed by persistent Apple Music IDs
 - **Context-Aware**: `context.Context` flows from MCP requests down to SQLite queries and JXA processes, so cancellation propagates end to end
 - **Radio Stations**: Apple Music stations with database-backed CRUD and search
+- **Vim Plugin**: fzf-powered library search and playback from inside Vim/Neovim ([`vim-plugin/`](vim-plugin/))
 
 ## Project History
 
-This project evolved from a legacy VIM plugin for iTunes integration. The original plugin remains untouched in the `master` branch as a reference. The current implementation is a complete rewrite focused on modern Apple Music integration, database performance, and AI/LLM compatibility through the MCP protocol.
+This project evolved from a legacy VIM plugin for iTunes integration. The original plugin remains untouched in the `master` branch as a reference. The current implementation is a complete rewrite focused on modern Apple Music integration, database performance, and AI/LLM compatibility through the MCP protocol — and includes a rewritten Vim plugin (`vim-plugin/`) that fronts the Go CLI instead of JXA scripts.
 
 ## Architecture
 
@@ -90,6 +91,7 @@ go build -o bin/itunes-migrate ./cmd/migrate  # Migration tool
 # Search your music library
 ./bin/itunes search "jazz"
 ./bin/itunes search "Miles Davis"
+./bin/itunes search --json "Miles Davis"   # JSON output (used by the Vim plugin)
 
 # Play tracks: play <playlist> [album] [track] [trackID]
 ./bin/itunes play "My Playlist" "" "" "B258396D58E2ECC9"   # ID with playlist context
@@ -126,6 +128,25 @@ Claude Desktop / Claude Code configuration:
   }
 }
 ```
+
+### Vim Plugin
+
+Search and play from inside Vim/Neovim via fzf:
+
+```vim
+Plug 'junegunn/fzf', { 'do': { -> fzf#install() } }
+Plug 'chew-z/itunes.vim', { 'branch': 'main', 'rtp': 'vim-plugin' }
+```
+
+| Command | Description |
+|---|---|
+| `:Tunes [query]` | Fuzzy-search the library and play the selected track |
+| `:TunesStatus` | Show the currently playing track |
+| `:TunesPlay [playlist]` | Play an entire playlist |
+
+The plugin shells out to `bin/itunes` (auto-detected, or set `g:itunes_bin`).
+See [vim-plugin/README.md](vim-plugin/README.md) for configuration and
+[docs/VIM-PLUGIN.md](docs/VIM-PLUGIN.md) for design details.
 
 ## MCP Tools (14)
 
@@ -181,9 +202,10 @@ Track IDs come from search results and are Apple Music persistent IDs, which avo
 ## Documentation
 
 Developer docs live in [`docs/`](docs/): [architecture](docs/ARCHITECTURE.md),
-[database & FTS5 internals](docs/DATABASE.md), and
+[database & FTS5 internals](docs/DATABASE.md),
 [JXA automation](docs/JXA-AUTOMATION.md) (including the bulk-fetch rule —
-required reading before touching any JXA script).
+required reading before touching any JXA script), and the
+[Vim plugin](docs/VIM-PLUGIN.md).
 
 ## Development
 
@@ -195,6 +217,7 @@ required reading before touching any JXA script).
 ├── itunes/                # Core library: Client type, playback, EQ, JXA scripts
 │   └── scripts/           # Embedded JXA automation scripts
 ├── database/              # SQLite + FTS5: schema, search, migrations
+├── vim-plugin/            # Vim/Neovim frontend (fzf + CLI)
 ├── docs/                  # Developer documentation
 ├── logging/               # zap logger setup
 └── cmd/migrate/           # Database migration/validation tool
