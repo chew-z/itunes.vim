@@ -22,7 +22,7 @@ func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Usage: itunes <command> [arguments]")
 		fmt.Println("Commands:")
-		fmt.Println("  search <query>                    - Search iTunes library for tracks")
+		fmt.Println("  search [--json] <query>            - Search iTunes library for tracks")
 		fmt.Println("  play <collection> [track]         - Play album/playlist")
 		fmt.Println("  search-stations <query>           - Search radio stations")
 		fmt.Println("  add-station [options]             - Add a new radio station")
@@ -114,13 +114,35 @@ func printUnknownCommand(command string) {
 }
 
 func handleSearch(ctx context.Context, args []string, searchLimit int) {
-	if len(args) < 1 {
-		fmt.Println("Usage: itunes search <query>")
+	jsonMode := false
+	var queryArgs []string
+	for _, arg := range args {
+		if arg == "--json" {
+			jsonMode = true
+		} else {
+			queryArgs = append(queryArgs, arg)
+		}
+	}
+	if len(queryArgs) < 1 {
+		fmt.Println("Usage: itunes search [--json] <query>")
 		return
 	}
-	tracks, err := client.SearchTracks(ctx, args[0])
+	query := strings.Join(queryArgs, " ")
+	tracks, err := client.SearchTracks(ctx, query)
 	if err != nil {
 		fmt.Printf("Error searching tracks: %v\n", err)
+		return
+	}
+	if jsonMode {
+		if tracks == nil {
+			tracks = []itunes.Track{}
+		}
+		data, err := json.Marshal(tracks)
+		if err != nil {
+			fmt.Printf("Error encoding JSON: %v\n", err)
+			return
+		}
+		fmt.Println(string(data))
 		return
 	}
 	if len(tracks) == 0 {
